@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { EmbedToolbar } from '../../components/documents/EmbedToolbar'
@@ -36,6 +36,7 @@ export function EmbedDocumentBuilder() {
   const builder = useDocumentBuilder(document, id, { embedMode: true })
   const uploadDocumentFile = useUploadDocumentFile(id)
   const readyNotifiedRef = useRef(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const pdfUrl = document ? getDocumentFileUrl(id, document.fileUrl) : undefined
 
@@ -58,8 +59,9 @@ export function EmbedDocumentBuilder() {
     notifyEmbedParent('builder-template-state', {
       documentId: document.id,
       canSaveTemplate: builder?.canSaveTemplate ?? false,
+      currentPage,
     })
-  }, [document, builder?.canSaveTemplate])
+  }, [document, builder?.canSaveTemplate, currentPage])
 
   const handleSaveTemplate = useCallback(() => {
     if (!builder?.canSaveTemplate || !document) return
@@ -132,12 +134,13 @@ export function EmbedDocumentBuilder() {
               onMoveField={builder.moveField}
               onResizeField={builder.resizeField}
               onRemoveField={builder.removeField}
-              onAddRadioOption={builder.addRadioOption}
+              onAddChoiceOption={builder.addChoiceOption}
               onReuploadFile={(file) => uploadDocumentFile.mutateAsync(file)}
               isReuploading={uploadDocumentFile.isPending}
               canPlaceFields={builder.canPlaceFields}
               placementBlockedMessage={builder.placementBlockedMessage}
               activeProfileColor={builder.activeProfileColor}
+              onPageChange={setCurrentPage}
               onPdfReady={handlePdfReady}
             />
           </Suspense>
@@ -145,6 +148,8 @@ export function EmbedDocumentBuilder() {
 
         <FieldTypePanel
           activeProfileType={builder.activeProfileType}
+          canUseProfilePreview={builder.canUseProfilePreview}
+          previewProfileMode={builder.previewProfileMode}
           isProfilePreviewEnabled={builder.isProfilePreviewEnabled}
           selectedFieldType={builder.selectedFieldType}
           newFieldRequired={builder.newFieldRequired}
@@ -152,11 +157,12 @@ export function EmbedDocumentBuilder() {
           recipients={builder.document.recipients}
           getFieldColor={builder.getFieldColor}
           onSelectProfileType={builder.setSelectedProfileType}
+          onProfilePreviewModeChange={builder.setPreviewProfileMode}
           onSelectFieldType={builder.setSelectedFieldType}
           onNewFieldRequiredChange={builder.setNewFieldRequired}
           onToggleFieldRequired={builder.setFieldRequired}
           onRemoveField={builder.removeField}
-          onAddRadioOption={builder.addRadioOption}
+          onAddChoiceOption={builder.addChoiceOption}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
         />

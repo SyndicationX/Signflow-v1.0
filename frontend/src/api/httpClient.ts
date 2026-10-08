@@ -1,6 +1,8 @@
 import { API_BASE_URL } from '../config/env'
 import { getEmbedApiKey, isEmbedPortalRoute, readEmbedApiKeyFromSearch } from './embedAuth'
 import { useAuthStore } from '../stores/authStore'
+import { getMachineIpHeaders } from '../utils/machineIp'
+import { getEmbedRequestHeaders } from '../utils/embedHeaders'
 import type { User } from '../types'
 
 function buildUrl(path: string): string {
@@ -15,8 +17,11 @@ function isAuthPath(path: string): boolean {
     path.startsWith('/auth/login') ||
     path.startsWith('/auth/register') ||
     path.startsWith('/auth/refresh') ||
+    path.startsWith('/auth/logout') ||
     path.startsWith('/auth/forgot-password') ||
-    path.startsWith('/auth/reset-password')
+    path.startsWith('/auth/reset-password') ||
+    path.startsWith('/auth/verify-email') ||
+    path.startsWith('/auth/resend-verification')
   )
 }
 
@@ -36,18 +41,15 @@ function resolveEmbedApiKey(): string | null {
 }
 
 async function tryRefreshToken(): Promise<boolean> {
-  const { refreshToken, login, logout } = useAuthStore.getState()
-
-  if (!refreshToken) {
-    logout()
-    return false
-  }
+  const { login, logout } = useAuthStore.getState()
 
   try {
+    const machineIpHeaders = await getMachineIpHeaders()
     const response = await fetch(buildUrl('/auth/refresh'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      headers: { 'Content-Type': 'application/json', ...machineIpHeaders },
+      credentials: 'include',
+      body: JSON.stringify({}),
     })
 
     if (!response.ok) {
@@ -55,12 +57,8 @@ async function tryRefreshToken(): Promise<boolean> {
       return false
     }
 
-    const result = (await response.json()) as {
-      accessToken: string
-      refreshToken: string
-      user: User
-    }
-    login(result.user, result.accessToken, result.refreshToken)
+    const result = (await response.json()) as { user: User }
+    login(result.user)
     return true
   } catch {
     logout()
@@ -77,23 +75,34 @@ async function refreshTokenOnce(): Promise<boolean> {
   return refreshInFlight
 }
 
+async function buildRequestHeaders(
+  path: string,
+  options: RequestInit,
+  attachEmbedKey: boolean,
+): Promise<Record<string, string>> {
+  const isFormData = options.body instanceof FormData
+  const machineIpHeaders = await getMachineIpHeaders()
+  const embedHeaders = isEmbedPortalRoute() && isPublicSigningPath(path) ? getEmbedRequestHeaders() : {}
+
+  return {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...machineIpHeaders,
+    ...embedHeaders,
+    ...(attachEmbedKey ? { Authorization: `Bearer ${resolveEmbedApiKey()}` } : {}),
+    ...(options.headers as Record<string, string> | undefined),
+  }
+}
+
 async function sendRequest(path: string, options: RequestInit = {}, isRetry = false): Promise<Response> {
-  const accessToken = useAuthStore.getState().accessToken
   const embedApiKey = resolveEmbedApiKey()
   const onEmbedRoute = isEmbedPortalRoute()
-  const isFormData = options.body instanceof FormData
-  const attachJwt =
-    Boolean(accessToken) && !isPublicSigningPath(path) && !embedApiKey && !onEmbedRoute
   const attachEmbedKey = Boolean(embedApiKey) && !isPublicSigningPath(path)
+  const headers = await buildRequestHeaders(path, options, attachEmbedKey)
 
   const response = await fetch(buildUrl(path), {
     ...options,
-    headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(attachJwt ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(attachEmbedKey ? { Authorization: `Bearer ${embedApiKey}` } : {}),
-      ...options.headers,
-    },
+    credentials: 'include',
+    headers,
   })
 
   if (
@@ -101,7 +110,8 @@ async function sendRequest(path: string, options: RequestInit = {}, isRetry = fa
     !isRetry &&
     !isAuthPath(path) &&
     !isPublicSigningPath(path) &&
-    !embedApiKey
+    !embedApiKey &&
+    !onEmbedRoute
   ) {
     const refreshed = await refreshTokenOnce()
     if (refreshed) {
@@ -113,7 +123,8 @@ async function sendRequest(path: string, options: RequestInit = {}, isRetry = fa
       !isSigningPortalRoute() &&
       !isEmbedPortalRoute()
     ) {
-      window.location.assign('/login')
+      const redirect = `${window.location.pathname}${window.location.search}`
+      window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
     }
   }
 

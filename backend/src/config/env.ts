@@ -47,6 +47,7 @@ export const env = {
   accessTokenTtl: optionalInt('ACCESS_TOKEN_TTL', 900),
   refreshTokenTtl: optionalInt('REFRESH_TOKEN_TTL', 60 * 60 * 24 * 7),
   passwordResetTtl: optionalInt('PASSWORD_RESET_TTL', 3600),
+  emailVerificationTtl: optionalInt('EMAIL_VERIFICATION_TTL', 86400),
   frontendUrl: process.env.FRONTEND_URL ?? process.env.BASE_URL ?? 'http://localhost:5177',
   corsOrigins: parseCorsOrigins(
     process.env.CORS_ORIGIN ?? process.env.BASE_URL ?? 'http://localhost:5177',
@@ -55,5 +56,8 @@ export const env = {
   logLevel: process.env.LOG_LEVEL ?? 'info',
   applicationLogDbEnabled: parseBoolean(process.env.APPLICATION_LOG_DB_ENABLED, true),
   applicationLogDbLevel: process.env.APPLICATION_LOG_DB_LEVEL ?? 'info',
+  applicationLogFileEnabled: parseBoolean(process.env.APPLICATION_LOG_FILE_ENABLED, true),
+  applicationLogFileLevel: process.env.APPLICATION_LOG_FILE_LEVEL ?? 'info',
+  logDir: process.env.LOG_DIR ?? 'logs',
   logSkipPaths: parseCsv(process.env.LOG_SKIP_PATHS ?? '/health,/api/v1/health'),
 } as const;

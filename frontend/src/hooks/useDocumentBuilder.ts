@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import type { DocumentField, FieldType, ProfileType, Recipient } from '../types'
 import { FIELD_TYPES, getAssignToLabel, getDefaultFieldSize, getProfileTypeColor, getProfileTypeStyle, getRecipientRoleColor, getRecipientRoleStyle, type ProfileScopeSelection } from '../constants/fieldTypes'
 import {
-  findNearbyRadioGroupId,
   getNextRadioOptionLabel,
   getRadioGroupFields,
   getRadioGroupId,
 } from '../utils/radioField'
+import { getCheckboxColumnFields, getNextCheckboxOptionLabel } from '../utils/checkboxField'
 import { fieldAppliesToProfile, getFieldProfileScope, getFieldProfileTypes } from '../utils/profileField'
 import { isInvestorSponsorWorkflow } from '../utils/investorSponsorWorkflow'
 import { canSaveEmbedTemplate } from '../utils/embedTemplate'
@@ -68,6 +68,7 @@ export function useDocumentBuilder(
   const [selectedProfileType, setSelectedProfileType] = useState<ProfileType>('individual')
   const [previewProfileType, setPreviewProfileType] = useState<ProfileType>('individual')
   const [defaultProfileScope, setDefaultProfileScope] = useState<ProfileScopeSelection>('all')
+  const [previewProfileMode, setPreviewProfileMode] = useState(false)
   const [pendingFieldPlacement, setPendingFieldPlacement] = useState<PendingFieldPlacement | null>(null)
   const [editingFieldProfileId, setEditingFieldProfileId] = useState<string | null>(null)
   const [recipientModal, setRecipientModal] = useState<RecipientModalState>(null)
@@ -149,9 +150,10 @@ export function useDocumentBuilder(
   const canSaveTemplate = embedMode
     ? canSaveEmbedTemplate(document.fields, recipients)
     : false
-  const isProfilePreviewEnabled = embedMode
+  const canUseProfilePreview = embedMode
     ? usesInvestorSponsorWorkflow
     : recipients.some((recipient) => recipient.role === 'buyer')
+  const isProfilePreviewEnabled = previewProfileMode && canUseProfilePreview
   const activeProfileColor = isProfilePreviewEnabled
     ? getProfileTypeColor(previewProfileType)
     : getRecipientRoleColor(selectedAssignRole)
@@ -291,20 +293,12 @@ export function useDocumentBuilder(
     const recipientId = activeProfileRecipient.id
     const { width, height } = getDefaultFieldSize(selectedFieldType)
     const fieldId = `f_${Date.now()}`
-    const placementCenterX = placement.x + width / 2
-    const placementCenterY = placement.y + height / 2
-    const existingRadioGroupId =
+    const choiceGroupId =
       selectedFieldType === 'radio'
-        ? findNearbyRadioGroupId(
-            document.fields,
-            recipientId,
-            placement.page,
-            placementCenterX,
-            placementCenterY,
-          )
-        : undefined
-    const radioGroupId =
-      selectedFieldType === 'radio' ? existingRadioGroupId ?? `rg_${Date.now()}` : undefined
+        ? `rg_${Date.now()}`
+        : selectedFieldType === 'checkbox'
+          ? `cg_${Date.now()}`
+          : undefined
     const profileTypes =
       selectedAssignRole === 'buyer' && profileScope !== 'all' ? profileScope : undefined
 
@@ -313,10 +307,10 @@ export function useDocumentBuilder(
       type: selectedFieldType,
       label:
         selectedFieldType === 'radio'
-          ? existingRadioGroupId
-            ? getNextRadioOptionLabel(document.fields, existingRadioGroupId)
-            : 'Option 1'
-          : FIELD_TYPES.find((f) => f.type === selectedFieldType)?.label || selectedFieldType,
+          ? 'Option 1'
+          : selectedFieldType === 'checkbox'
+            ? 'Checkbox 1'
+            : FIELD_TYPES.find((f) => f.type === selectedFieldType)?.label || selectedFieldType,
       x: placement.x,
       y: placement.y,
       width,
@@ -325,7 +319,7 @@ export function useDocumentBuilder(
       recipientId,
       required: newFieldRequired,
       ...(profileTypes ? { profileTypes } : {}),
-      ...(radioGroupId ? { radioGroupId } : {}),
+      ...(choiceGroupId ? { radioGroupId: choiceGroupId } : {}),
     }
 
     saveBuilderState(recipients, [...document.fields, newField])
@@ -494,23 +488,34 @@ export function useDocumentBuilder(
     )
   }
 
-  const addRadioOption = (fieldId: string) => {
+  /** Stack another radio option or checkbox directly beneath the one clicked. */
+  const addChoiceOption = (fieldId: string) => {
     const source = document.fields.find((field) => field.id === fieldId)
-    if (!source || source.type !== 'radio') return
+    if (!source) return
+    if (source.type !== 'radio' && source.type !== 'checkbox') return
 
-    const groupId = getRadioGroupId(source, document.fields)
-    if (!groupId) return
+    const groupId =
+      source.type === 'radio'
+        ? getRadioGroupId(source, document.fields)
+        : source.radioGroupId
+    if (source.type === 'radio' && !groupId) return
 
-    const siblings = getRadioGroupFields(document.fields, groupId)
-    const { width, height } = getDefaultFieldSize('radio')
+    const siblings =
+      source.type === 'radio'
+        ? getRadioGroupFields(document.fields, groupId!)
+        : getCheckboxColumnFields(document.fields, source)
+    const { width, height } = getDefaultFieldSize(source.type)
     const bottom = siblings.reduce((max, field) => Math.max(max, field.y + field.height), source.y)
     const gap = 0.5
     const newY = Math.min(bottom + gap, 100 - height)
 
     const newField: DocumentField = {
       id: `f_${Date.now()}`,
-      type: 'radio',
-      label: getNextRadioOptionLabel(document.fields, groupId),
+      type: source.type,
+      label:
+        source.type === 'radio'
+          ? getNextRadioOptionLabel(document.fields, groupId!)
+          : getNextCheckboxOptionLabel(siblings),
       x: source.x,
       y: newY,
       width,
@@ -520,7 +525,7 @@ export function useDocumentBuilder(
       required: source.required,
       profileTypes: source.profileTypes,
       profileType: source.profileType,
-      radioGroupId: groupId,
+      ...(groupId ? { radioGroupId: groupId } : {}),
     }
 
     saveBuilderState(recipients, [...document.fields, newField])
@@ -563,6 +568,9 @@ export function useDocumentBuilder(
     activeRecipientId,
     activeAssignRole: selectedAssignRole,
     isProfileTypeEnabled,
+    canUseProfilePreview,
+    previewProfileMode,
+    setPreviewProfileMode,
     isProfilePreviewEnabled,
     activeProfileType: previewProfileType,
     activeProfileColor,
@@ -591,7 +599,7 @@ export function useDocumentBuilder(
     moveField,
     resizeField,
     removeField,
-    addRadioOption,
+    addChoiceOption,
     updateFieldLabel,
     getRecipientColor,
     getFieldColor,

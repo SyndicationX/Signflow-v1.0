@@ -1,7 +1,9 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Monitor, Moon, Palette, Sun, UserRound } from 'lucide-react'
+import { api } from '../../api/client'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore, type ThemeMode } from '../../stores/themeStore'
+import { toast } from '../../utils/toast'
 import { Dropdown, DropdownItem } from '../ui/Dropdown'
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -17,9 +19,16 @@ export function TopNavBar() {
   const { mode, setMode } = useThemeStore()
   const isBuilderPage = /\/documents\/[^/]+\/builder(?:\/|$)/.test(location.pathname)
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
+  const handleLogout = async () => {
+    try {
+      await api.auth.logout()
+    } catch {
+      // Clear local session even if server revoke fails
+    } finally {
+      logout()
+      toast.info('Signed out.')
+      navigate('/login')
+    }
   }
 
   return (

@@ -68,12 +68,13 @@ interface PdfCanvasProps {
   onMoveField: (fieldId: string, x: number, y: number) => void
   onResizeField: (fieldId: string, width: number, height: number) => void
   onRemoveField: (fieldId: string) => void
-  onAddRadioOption?: (fieldId: string) => void
+  onAddChoiceOption?: (fieldId: string) => void
   onReuploadFile?: (file: File) => Promise<unknown>
   isReuploading?: boolean
   canPlaceFields?: boolean
   placementBlockedMessage?: string
   activeProfileColor?: string
+  onPageChange?: (page: number) => void
   onPdfReady?: () => void
 }
 
@@ -102,12 +103,13 @@ export function PdfCanvas({
   onMoveField,
   onResizeField,
   onRemoveField,
-  onAddRadioOption,
+  onAddChoiceOption,
   onReuploadFile,
   isReuploading = false,
   canPlaceFields = true,
   placementBlockedMessage,
   activeProfileColor,
+  onPageChange,
   onPdfReady,
 }: PdfCanvasProps) {
   const pageContainerRef = useRef<HTMLDivElement>(null)
@@ -134,6 +136,10 @@ export function PdfCanvas({
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages))
   }, [totalPages])
+
+  useEffect(() => {
+    onPageChange?.(currentPage)
+  }, [currentPage, onPageChange])
 
   useEffect(() => {
     setPdfPageCount(null)
@@ -498,22 +504,25 @@ export function PdfCanvas({
                   {field.type === 'radio' ? `○ ${field.label}` : field.label}
                   {field.required && <span className="pdf-field-required">*</span>}
                 </span>
-                {field.type === 'radio' && onAddRadioOption && (
-                  <button
-                    type="button"
-                    className="pdf-field-add-option"
-                    aria-label="Add radio option"
-                    title="Add option"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      skipNextClickRef.current = true
-                      onAddRadioOption(field.id)
-                    }}
-                  >
-                    +
-                  </button>
-                )}
+                {(field.type === 'radio' || field.type === 'checkbox') &&
+                  onAddChoiceOption && (
+                    <button
+                      type="button"
+                      className="pdf-field-add-option"
+                      aria-label={
+                        field.type === 'radio' ? 'Add radio option' : 'Add checkbox'
+                      }
+                      title={field.type === 'radio' ? 'Add option' : 'Add checkbox'}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        skipNextClickRef.current = true
+                        onAddChoiceOption(field.id)
+                      }}
+                    >
+                      +
+                    </button>
+                  )}
                 <button
                   type="button"
                   className="pdf-field-remove"

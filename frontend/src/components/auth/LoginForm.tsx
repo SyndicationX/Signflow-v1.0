@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { APP_NAME } from '../common/AppBrand'
@@ -10,18 +10,40 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../stores/authStore'
+import { toast } from '../../utils/toast'
+
+type LoginRedirectState = {
+  from?: {
+    pathname: string
+    search?: string
+  }
+}
+
+function getRedirectPath(state: unknown, search: string): string {
+  const queryRedirect = new URLSearchParams(search).get('redirect')
+  if (queryRedirect?.startsWith('/') && !queryRedirect.startsWith('//')) {
+    return queryRedirect
+  }
+
+  const from = (state as LoginRedirectState | null)?.from
+  if (!from?.pathname) return '/dashboard'
+  return `${from.pathname}${from.search ?? ''}`
+}
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
 type LoginFormData = z.infer<typeof loginSchema>
 
 export function LoginForm() {
   const navigate = useNavigate()
+  const location = useLocation()
   const login = useAuthStore((s) => s.login)
   const [error, setError] = useState('')
+
+  const redirectTo = getRedirectPath(location.state, location.search)
 
   const {
     register,
@@ -33,10 +55,14 @@ export function LoginForm() {
     setError('')
     try {
       const result = await api.auth.login(data.email, data.password)
-      login(result.user, result.accessToken, result.refreshToken)
-      navigate('/dashboard')
-    } catch {
-      setError('Invalid credentials. Please try again.')
+      login(result.user)
+      toast.success('Signed in successfully.')
+      navigate(redirectTo, { replace: true })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Invalid credentials. Please try again.'
+      setError(message)
+      toast.error(message)
     }
   }
 

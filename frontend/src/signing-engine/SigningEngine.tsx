@@ -1,17 +1,22 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSigningStore } from '../stores/signingStore'
 import { SignatureModal } from './SignatureModal'
 import { SigningSidebar } from './SigningSidebar'
 import { SigningDocumentViewer } from './SigningDocumentViewer'
-import { saveSigningCompletion } from '../utils/pdf'
+import { saveSigningCompletion, clearPdfDocumentCache, getSigningDocumentFileUrl } from '../utils/pdf'
 import {
   areRequiredFieldsComplete,
   buildRadioGroupSelectionUpdates,
   collapseRadioGroupsForValidation,
   getRadioGroupId,
 } from '../utils/radioField'
+import { formatDisplayDate } from '../utils/date'
 import { fieldAppliesToProfile } from '../utils/profileField'
+import {
+  replicateRecipientSigningFieldValues,
+  replicateRecipientSigningSignedAt,
+} from '../utils/replicateSigningFieldValues'
 import { getRecipientRoleColor } from '../constants/fieldTypes'
 import { Button } from '../components/ui/Button'
 import type { Document, SigningMode } from '../types'
@@ -110,6 +115,58 @@ export function SigningEngine({
   const requiredFields = collapseRadioGroupsForValidation(recipientFields.filter((f) => f.required))
   const progress = getProgress(recipientFields)
 
+  const pdfRevision = useMemo(
+    () =>
+      [
+        ...document.recipients
+          .filter((item) => item.signed || item.signingStatus === 'signed')
+          .map((item) => `${item.id}:${item.signedAt ?? ''}`),
+        ...document.fields
+          .filter((field) => field.value)
+          .map((field) => `${field.id}:${field.value}`),
+      ].join('|'),
+    [document.recipients, document.fields],
+  )
+
+  useEffect(() => {
+    const updates: Record<string, string> = {}
+    const signedAtUpdates: Record<string, string> = {}
+
+    for (const field of document.fields) {
+      if (!field.value || field.recipientId === recipientId) continue
+
+      const owner = document.recipients.find((item) => item.id === field.recipientId)
+      const ownerSigned = owner?.signingStatus === 'signed' || owner?.signed === true
+      const isInvestorField =
+        Boolean(investorRecipientId) && field.recipientId === investorRecipientId
+      const isOtherSignedField = ownerSigned && field.recipientId !== recipientId
+
+      if (!isInvestorField && !isOtherSignedField) continue
+
+      if (owner?.role === 'buyer' && owner.profileType && !fieldAppliesToProfile(field, owner.profileType)) {
+        continue
+      }
+
+      updates[field.id] = field.value
+
+      if (owner?.signedAt && (field.type === 'signature' || field.type === 'initial')) {
+        signedAtUpdates[field.id] = owner.signedAt
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      setFieldValues(updates)
+    }
+    for (const [fieldId, signedAt] of Object.entries(signedAtUpdates)) {
+      setFieldSignedAt(fieldId, signedAt)
+    }
+  }, [pdfRevision, document, recipientId, investorRecipientId, setFieldValues, setFieldSignedAt])
+
+  useEffect(() => {
+    if (!token) return
+    clearPdfDocumentCache(getSigningDocumentFileUrl(token))
+  }, [pdfRevision, token])
+
   useEffect(() => {
     setMode(mode)
     onEvent?.('loaded', { documentId: document.id })
@@ -163,7 +220,17 @@ export function SigningEngine({
   }, [applyBranding])
 
   const handleFieldActivate = (fieldId: string) => {
-    const index = recipientFields.findIndex((field) => field.id === fieldId)
+    let index = requiredFields.findIndex((field) => field.id === fieldId)
+    if (index < 0) {
+      const field = document.fields.find((item) => item.id === fieldId)
+      if (field?.type === 'radio') {
+        const groupId = getRadioGroupId(field, document.fields)
+        index = requiredFields.findIndex((item) => {
+          if (item.type !== 'radio') return false
+          return getRadioGroupId(item, document.fields) === groupId
+        })
+      }
+    }
     if (index >= 0) {
       setCurrentFieldIndex(index)
     }
@@ -189,19 +256,29 @@ export function SigningEngine({
   const handleSignatureSave = (value: string) => {
     if (activeSignatureFieldId) {
       const signedAt = new Date().toISOString()
-      const nextFieldValues = { ...fieldValues, [activeSignatureFieldId]: value }
-
-      setFieldValue(activeSignatureFieldId, value)
-      setFieldSignedAt(activeSignatureFieldId, signedAt)
+      const replicatedValues = replicateRecipientSigningFieldValues(
+        recipientFields,
+        fieldValues,
+        activeSignatureFieldId,
+        value,
+      )
+      const replicatedSignedAt = replicateRecipientSigningSignedAt(
+        recipientFields,
+        fieldSignedAt,
+        activeSignatureFieldId,
+        signedAt,
+      )
 
       const dateUpdates: Record<string, string> = {}
       for (const field of recipientFields) {
-        if (field.type === 'date' && !nextFieldValues[field.id]) {
-          dateUpdates[field.id] = signedAt.slice(0, 10)
+        if (field.type === 'date' && !replicatedValues[field.id]) {
+          dateUpdates[field.id] = formatDisplayDate(signedAt)
         }
       }
-      if (Object.keys(dateUpdates).length > 0) {
-        setFieldValues(dateUpdates)
+
+      setFieldValues({ ...replicatedValues, ...dateUpdates })
+      for (const [fieldId, fieldSignedAtValue] of Object.entries(replicatedSignedAt)) {
+        setFieldSignedAt(fieldId, fieldSignedAtValue)
       }
 
       onEvent?.('signed', { fieldId: activeSignatureFieldId, signedAt })
@@ -241,11 +318,25 @@ export function SigningEngine({
     })
 
     const completedAt = new Date().toISOString()
-    const mergedFieldValues = { ...fieldValues }
+    let mergedFieldValues = { ...fieldValues }
     for (const field of recipientFields) {
       if (field.type === 'date' && !mergedFieldValues[field.id]) {
-        mergedFieldValues[field.id] = completedAt.slice(0, 10)
+        mergedFieldValues[field.id] = formatDisplayDate(completedAt)
       }
+    }
+
+    const primarySignatureField = recipientFields.find(
+      (field) =>
+        (field.type === 'signature' || field.type === 'initial') &&
+        String(mergedFieldValues[field.id] ?? '').trim(),
+    )
+    if (primarySignatureField) {
+      mergedFieldValues = replicateRecipientSigningFieldValues(
+        recipientFields,
+        mergedFieldValues,
+        primarySignatureField.id,
+        mergedFieldValues[primarySignatureField.id]!,
+      )
     }
 
     const valuesToSubmit = Object.fromEntries(
@@ -256,7 +347,11 @@ export function SigningEngine({
 
     await onComplete?.(valuesToSubmit)
 
-    if (mode === 'public' && token) {
+    if (token) {
+      clearPdfDocumentCache(getSigningDocumentFileUrl(token))
+    }
+
+    if (token && (mode === 'public' || mode === 'iframe')) {
       navigate(`/sign/${token}/complete`)
     }
   }
@@ -281,13 +376,14 @@ export function SigningEngine({
       fields={viewerFields}
       fieldValues={fieldValues}
       fieldSignedAt={fieldSignedAt}
-      activeFieldId={recipientFields[currentFieldIndex]?.id}
+      activeFieldId={requiredFields[currentFieldIndex]?.id}
       readOnlyFieldIds={readOnlyFieldIds}
       getRecipientColor={getRecipientColor}
       onFieldActivate={handleFieldActivate}
       onFieldValueChange={handleFieldValueChange}
       onSignatureRequest={handleSignatureRequest}
       showAllPages={isIframeMode}
+      pdfRevision={pdfRevision}
     />
   )
 

@@ -34,7 +34,7 @@ export function DocumentBuilderPage() {
     return (
       <>
         <PageTitle title="Document Builder" />
-        <LoadingState message="Loading document builder..." />
+        <LoadingState label="Loading document builder" />
       </>
     )
   }
@@ -90,6 +90,8 @@ export function DocumentBuilderPage() {
       <div className="builder-layout">
         <FieldTypePanel
           activeProfileType={builder.activeProfileType}
+          canUseProfilePreview={builder.canUseProfilePreview}
+          previewProfileMode={builder.previewProfileMode}
           isProfilePreviewEnabled={builder.isProfilePreviewEnabled}
           selectedFieldType={builder.selectedFieldType}
           newFieldRequired={builder.newFieldRequired}
@@ -97,15 +99,16 @@ export function DocumentBuilderPage() {
           recipients={builder.document.recipients}
           getFieldColor={builder.getFieldColor}
           onSelectProfileType={builder.setSelectedProfileType}
+          onProfilePreviewModeChange={builder.setPreviewProfileMode}
           onSelectFieldType={builder.setSelectedFieldType}
           onNewFieldRequiredChange={builder.setNewFieldRequired}
           onToggleFieldRequired={builder.setFieldRequired}
           onRemoveField={builder.removeField}
-          onAddRadioOption={builder.addRadioOption}
+          onAddChoiceOption={builder.addChoiceOption}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
         />
-        <Suspense fallback={<LoadingState message="Loading document preview..." />}>
+        <Suspense fallback={<LoadingState label="Loading document preview" />}>
           <PdfCanvas
             documentId={id}
             fileUrl={builder.document.fileUrl}
@@ -119,7 +122,7 @@ export function DocumentBuilderPage() {
             onMoveField={builder.moveField}
             onResizeField={builder.resizeField}
             onRemoveField={builder.removeField}
-            onAddRadioOption={builder.addRadioOption}
+            onAddChoiceOption={builder.addChoiceOption}
             onReuploadFile={(file) => uploadDocumentFile.mutateAsync(file)}
             isReuploading={uploadDocumentFile.isPending}
             canPlaceFields={builder.canPlaceFields}

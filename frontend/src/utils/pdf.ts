@@ -1,6 +1,8 @@
 import { API_BASE_URL } from '../config/env'
-import { useAuthStore } from '../stores/authStore'
+import { formatDateFieldValue } from './date'
+import { getMachineIpHeaders } from './machineIp'
 import { getEmbedApiKey, isEmbedPortalRoute, readEmbedApiKeyFromSearch } from '../api/embedAuth'
+import { getEmbedRequestHeaders } from './embedHeaders'
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist'
 
 GlobalWorkerOptions.workerSrc = new URL(
@@ -69,17 +71,21 @@ export async function fetchPdfArrayBuffer(fileUrl: string): Promise<ArrayBuffer>
     const embedKey =
       getEmbedApiKey() ??
       (isEmbedPortalRoute() ? readEmbedApiKeyFromSearch(window.location.search) : null)
-    const token = useAuthStore.getState().accessToken
     if (embedKey) {
       headers.Authorization = `Bearer ${embedKey}`
-    } else if (token && !isEmbedPortalRoute()) {
-      headers.Authorization = `Bearer ${token}`
-    } else {
-      throw new Error('You do not have access to this document file.')
     }
   }
 
-  const response = await fetch(url, { headers, credentials: 'omit' })
+  if (isEmbedPortalRoute() && isSigningSessionFileUrl(url)) {
+    Object.assign(headers, getEmbedRequestHeaders())
+  }
+
+  Object.assign(headers, await getMachineIpHeaders())
+
+  const response = await fetch(url, {
+    headers,
+    credentials: requiresAuthenticatedPdfFetch(url) ? 'include' : 'omit',
+  })
   if (!response.ok) {
     if (response.status === 404) {
       throw new Error('Document file not found. Please upload the PDF again.')
@@ -214,7 +220,7 @@ export function formatFieldDisplayValue(value: string): string {
   if (value.startsWith('typed:')) return value.slice('typed:'.length)
   if (value.startsWith('uploaded:')) return value.slice('uploaded:'.length)
   if (value.startsWith('drawn:')) return 'Signed'
-  return value
+  return formatDateFieldValue(value)
 }
 
 export function getSignatureImageSrc(value: string): string | null {
@@ -239,7 +245,10 @@ export async function downloadDocumentCopy(
 
 export async function downloadSignedDocumentCopy(token: string, title: string): Promise<void> {
   const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
-  const response = await fetch(`${apiOrigin}/api/v1/signing/sessions/${token}/download`)
+  const machineIpHeaders = await getMachineIpHeaders()
+  const response = await fetch(`${apiOrigin}/api/v1/signing/sessions/${token}/download`, {
+    headers: machineIpHeaders,
+  })
 
   if (!response.ok) {
     throw new Error('Failed to download signed document')

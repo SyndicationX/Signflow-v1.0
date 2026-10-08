@@ -1,11 +1,12 @@
 import { documentRepository } from '../repositories/document.repository';
+import { sdkConfigRepository } from '../repositories/sdk-config.repository';
 import { signingRepository } from '../repositories/signing.repository';
 import { billingRepository } from '../repositories/billing.repository';
 import { documentService } from './document.service';
 import { pdfDocumentService } from './pdf-document.service';
 import { documentFileService } from './document-file.service';
 import { AppError } from '../utils/app-error';
-import { assertDocumentContentIntegrity } from '../utils/document-integrity';
+import { assertOrResyncDocumentContentIntegrity } from '../utils/document-integrity';
 import { hashToken } from '../utils/crypto';
 import { formatSigningDate } from '../utils/signing-timestamp';
 import { toDocument } from '../utils/mappers';
@@ -13,13 +14,37 @@ import { webhookService } from './webhook.service';
 import type { ProfileType } from '../types/domain';
 import { applyResolvedRadioGroups } from '../utils/radio-field';
 import { isInvestorSponsorWorkflow } from '../utils/investor-sponsor-workflow';
+import { assertEmbedOriginAllowed } from '../utils/sdk-domain';
+import { replicateRecipientSignatureFieldValues } from '../utils/replicate-signature-fields';
+
+export interface SigningEmbedContext {
+  isEmbed: boolean;
+  parentOrigin?: string;
+}
 
 export class SigningService {
-  async getSession(token: string, clientIp?: string) {
+  private async assertEmbedAccessAllowed(
+    documentId: string,
+    embed?: SigningEmbedContext,
+  ): Promise<void> {
+    if (!embed?.isEmbed) return;
+
+    const row = await documentRepository.findById(documentId);
+    if (!row) {
+      throw new AppError('Document not found', 404, 'NOT_FOUND');
+    }
+
+    const config = await sdkConfigRepository.findByOrganization(row.organization_id);
+    assertEmbedOriginAllowed(embed.parentOrigin, config?.allowed_domains ?? []);
+  }
+
+  async getSession(token: string, clientIp?: string, embed?: SigningEmbedContext) {
     const session = await signingRepository.findValidByTokenHash(hashToken(token));
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
+
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
 
     await signingRepository.markViewed(hashToken(token), clientIp);
 
@@ -38,7 +63,7 @@ export class SigningService {
 
     const recipients = await documentRepository.findRecipients(session.document_id);
     const fields = await documentRepository.findFields(session.document_id);
-    assertDocumentContentIntegrity(row, recipients, fields);
+    await assertOrResyncDocumentContentIntegrity(row, recipients, fields);
 
     const baseDocument = toDocument(row, recipients, fields);
     const signingInfo = await signingRepository.getRecipientSigningInfo(session.document_id);
@@ -76,19 +101,24 @@ export class SigningService {
     };
   }
 
-  async getSessionDocumentPdf(token: string): Promise<{ buffer: Buffer; filename: string }> {
+  async getSessionDocumentPdf(
+    token: string,
+    embed?: SigningEmbedContext,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findValidByTokenHash(tokenHash);
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
 
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
+
     const { row } = await documentFileService.readOriginalPdf(session.document_id);
     const filename = row.file_name || `${row.title}.pdf`;
 
     const recipients = await documentRepository.findRecipients(session.document_id);
     const fields = await documentRepository.findFields(session.document_id);
-    assertDocumentContentIntegrity(row, recipients, fields);
+    await assertOrResyncDocumentContentIntegrity(row, recipients, fields);
 
     if (session.investor_recipient_id) {
       const buffer = await pdfDocumentService.generateRecipientSignedPdf(
@@ -115,15 +145,30 @@ export class SigningService {
     return signingRepository.isWorkflowComplete(documentId);
   }
 
-  async complete(token: string, fieldValues?: Record<string, string>, clientIp?: string) {
+  async complete(
+    token: string,
+    fieldValues?: Record<string, string>,
+    clientIp?: string,
+    embed?: SigningEmbedContext,
+  ) {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findValidByTokenHash(tokenHash);
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
 
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
+
     if (fieldValues && Object.keys(fieldValues).length > 0) {
-      await documentRepository.updateFieldValues(session.document_id, fieldValues);
+      const recipientFields = await documentRepository.findFields(session.document_id);
+      const scopedFields = recipientFields.filter(
+        (field) => field.recipient_id === session.recipient_id,
+      );
+      const replicatedValues = replicateRecipientSignatureFieldValues(
+        scopedFields,
+        fieldValues,
+      );
+      await documentRepository.updateFieldValues(session.document_id, replicatedValues);
     }
 
     const completedSession = await signingRepository.markCompleted(tokenHash, clientIp);
@@ -187,12 +232,14 @@ export class SigningService {
     return { success: true, timestamp: signedAt.toISOString() };
   }
 
-  async downloadCompletedDocument(token: string) {
+  async downloadCompletedDocument(token: string, embed?: SigningEmbedContext) {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findByTokenHash(tokenHash);
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
+
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
 
     if (!session.completed_at) {
       throw new AppError('Document has not been signed yet', 400, 'NOT_SIGNED');
@@ -219,12 +266,14 @@ export class SigningService {
     };
   }
 
-  async setRecipientProfile(token: string, profileType: ProfileType) {
+  async setRecipientProfile(token: string, profileType: ProfileType, embed?: SigningEmbedContext) {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findValidByTokenHash(tokenHash);
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
+
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
 
     const recipients = await documentRepository.findRecipients(session.document_id);
     const recipient = recipients.find((item) => item.id === session.recipient_id);
@@ -249,12 +298,14 @@ export class SigningService {
     return { success: true, profileType };
   }
 
-  async decline(token: string) {
+  async decline(token: string, embed?: SigningEmbedContext) {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findValidByTokenHash(tokenHash);
     if (!session) {
       throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
     }
+
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
 
     await signingRepository.markDeclined(tokenHash);
     await documentRepository.update(session.document_id, { status: 'declined' });
