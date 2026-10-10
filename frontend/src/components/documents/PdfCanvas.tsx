@@ -74,6 +74,8 @@ interface PdfCanvasProps {
   canPlaceFields?: boolean
   placementBlockedMessage?: string
   activeProfileColor?: string
+  /** 1-based page to show. When set, file reloads stay on this page. */
+  page?: number
   onPageChange?: (page: number) => void
   onPdfReady?: () => void
 }
@@ -109,17 +111,22 @@ export function PdfCanvas({
   canPlaceFields = true,
   placementBlockedMessage,
   activeProfileColor,
+  page: requestedPage,
   onPageChange,
   onPdfReady,
 }: PdfCanvasProps) {
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const onPdfReadyRef = useRef(onPdfReady)
+  const requestedPageRef = useRef(requestedPage)
   const hasRenderedPageRef = useRef(false)
   const renderGenerationRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const skipNextClickRef = useRef(false)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const requested = Math.floor(Number(requestedPage))
+    return Number.isFinite(requested) && requested >= 1 ? requested : 1
+  })
   const [pdfPageCount, setPdfPageCount] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -127,6 +134,7 @@ export function PdfCanvas({
   const [resizeState, setResizeState] = useState<ResizeState | null>(null)
 
   onPdfReadyRef.current = onPdfReady
+  requestedPageRef.current = requestedPage
 
   const resolvedFileUrl = getDocumentFileUrl(documentId, fileUrl)
   const totalPages = Math.max(pages, pdfPageCount ?? 0, 1)
@@ -134,8 +142,15 @@ export function PdfCanvas({
   const visiblePageFields = pageFields.filter((field) => isFieldVisibleInPreview?.(field) ?? true)
 
   useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages))
-  }, [totalPages])
+    if (requestedPage == null || !Number.isFinite(requestedPage)) return
+    const next = Math.max(1, Math.floor(requestedPage))
+    setCurrentPage((page) => (page === next ? page : next))
+  }, [requestedPage])
+
+  useEffect(() => {
+    if (pdfPageCount == null) return
+    setCurrentPage((page) => Math.min(page, Math.max(1, pdfPageCount)))
+  }, [pdfPageCount])
 
   useEffect(() => {
     onPageChange?.(currentPage)
@@ -143,7 +158,8 @@ export function PdfCanvas({
 
   useEffect(() => {
     setPdfPageCount(null)
-    setCurrentPage(1)
+    const requested = Math.floor(Number(requestedPageRef.current))
+    setCurrentPage(Number.isFinite(requested) && requested >= 1 ? requested : 1)
     hasRenderedPageRef.current = false
     if (resolvedFileUrl) {
       clearPdfDocumentCache(resolvedFileUrl)

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { EmbedToolbar } from '../../components/documents/EmbedToolbar'
 import { FieldTypePanel } from '../../components/documents/FieldTypePanel'
@@ -29,14 +29,20 @@ function notifyEmbedParent(event: string, payload?: Record<string, unknown>) {
   window.parent.postMessage({ source: 'signflow-embed', event, ...payload }, '*')
 }
 
+function readRequestedEmbedPage(searchParams: URLSearchParams): number {
+  const page = Math.floor(Number(searchParams.get('page')))
+  return Number.isFinite(page) && page >= 1 ? page : 1
+}
+
 /** Slim field-placement UI for portal iframe embed — no SignFlow app chrome. */
 export function EmbedDocumentBuilder() {
   const { id = '' } = useParams<{ id: string }>()
-  const { data: document, isLoading, isError, error } = useDocument(id)
+  const [searchParams] = useSearchParams()
+  const { data: document, isLoading, isError, error, refetch } = useDocument(id)
   const builder = useDocumentBuilder(document, id, { embedMode: true })
   const uploadDocumentFile = useUploadDocumentFile(id)
   const readyNotifiedRef = useRef(false)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(() => readRequestedEmbedPage(searchParams))
 
   const pdfUrl = document ? getDocumentFileUrl(id, document.fileUrl) : undefined
 
@@ -62,6 +68,24 @@ export function EmbedDocumentBuilder() {
       currentPage,
     })
   }, [document, builder?.canSaveTemplate, currentPage])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent) return
+      const data = event.data as { source?: string; event?: string; page?: number } | null
+      if (!data || data.source !== 'signflow-parent') return
+      if (data.event === 'set-page' || data.event === 'set-current-page') {
+        const page = Math.floor(Number(data.page))
+        if (Number.isFinite(page) && page >= 1) setCurrentPage(page)
+        return
+      }
+      if (data.event === 'refresh-document') {
+        void refetch()
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [refetch])
 
   const handleSaveTemplate = useCallback(() => {
     if (!builder?.canSaveTemplate || !document) return
@@ -140,6 +164,7 @@ export function EmbedDocumentBuilder() {
               canPlaceFields={builder.canPlaceFields}
               placementBlockedMessage={builder.placementBlockedMessage}
               activeProfileColor={builder.activeProfileColor}
+              page={currentPage}
               onPageChange={setCurrentPage}
               onPdfReady={handlePdfReady}
             />
