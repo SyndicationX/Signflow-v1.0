@@ -1,77 +1,13 @@
 import type { DocumentField } from '../types'
 
-type RadioFieldLike = Pick<
-  DocumentField,
-  'id' | 'type' | 'recipientId' | 'page' | 'x' | 'y' | 'width' | 'height' | 'radioGroupId'
->
-
-const MAX_VERTICAL_GAP = 12
-const MAX_HORIZONTAL_OFFSET = 25
-
-function countExplicitGroupMembers(fields: RadioFieldLike[], radioGroupId: string): number {
-  return fields.filter((field) => field.type === 'radio' && field.radioGroupId === radioGroupId)
-    .length
-}
-
 export function resolveRadioGroupIds(fields: DocumentField[]): Map<string, string> {
   const assignment = new Map<string, string>()
-  const radios = fields.filter((field) => field.type === 'radio')
 
-  for (const field of radios) {
-    if (field.radioGroupId && countExplicitGroupMembers(fields, field.radioGroupId) > 1) {
-      assignment.set(field.id, field.radioGroupId)
-    }
-  }
-
-  const buckets = new Map<string, RadioFieldLike[]>()
-  for (const field of radios) {
-    if (assignment.has(field.id)) continue
-    const key = `${field.recipientId}:${field.page}`
-    const list = buckets.get(key) ?? []
-    list.push(field)
-    buckets.set(key, list)
-  }
-
-  for (const bucket of buckets.values()) {
-    if (bucket.length <= 1) {
-      const field = bucket[0]
-      assignment.set(field.id, field.radioGroupId ?? field.id)
-      continue
-    }
-
-    const sorted = [...bucket].sort((a, b) => a.y - b.y || a.x - b.x)
-    let cluster: RadioFieldLike[] = []
-
-    const assignCluster = () => {
-      if (cluster.length === 0) return
-      const groupId =
-        cluster.length === 1
-          ? cluster[0].radioGroupId ?? cluster[0].id
-          : `rg_${cluster[0].recipientId}_${cluster[0].page}_${Math.round(cluster[0].y)}`
-      for (const field of cluster) {
-        assignment.set(field.id, groupId)
-      }
-      cluster = []
-    }
-
-    for (const candidate of sorted) {
-      if (cluster.length === 0) {
-        cluster.push(candidate)
-        continue
-      }
-
-      const previous = cluster[cluster.length - 1]
-      const gap = candidate.y - (previous.y + previous.height)
-      const aligned = Math.abs(candidate.x - previous.x) <= MAX_HORIZONTAL_OFFSET
-      if (gap <= MAX_VERTICAL_GAP && aligned) {
-        cluster.push(candidate)
-      } else {
-        assignCluster()
-        cluster.push(candidate)
-      }
-    }
-
-    assignCluster()
+  for (const field of fields) {
+    if (field.type !== 'radio') continue
+    // Only options created with + share a radioGroupId. A new placement does not
+    // join a nearby group.
+    assignment.set(field.id, field.radioGroupId?.trim() || field.id)
   }
 
   return assignment
@@ -127,41 +63,6 @@ export function buildRadioGroupSelectionUpdates(
     updates[groupField.id] = groupField.id === selectedFieldId ? 'selected' : ''
   }
   return updates
-}
-
-/** When placing a new radio option near an existing one, join that group. */
-export function findNearbyRadioGroupId(
-  fields: DocumentField[],
-  recipientId: string,
-  page: number,
-  x: number,
-  y: number,
-  maxDistancePercent = 25,
-): string | undefined {
-  const candidates = fields.filter(
-    (field) => field.type === 'radio' && field.recipientId === recipientId && field.page === page,
-  )
-  if (candidates.length === 0) return undefined
-
-  const resolved = resolveRadioGroupIds(fields)
-  let nearest: DocumentField | undefined
-  let nearestDistance = Infinity
-
-  for (const field of candidates) {
-    const centerX = field.x + field.width / 2
-    const centerY = field.y + field.height / 2
-    const distance = Math.hypot(centerX - x, centerY - y)
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearest = field
-    }
-  }
-
-  if (!nearest || nearestDistance > maxDistancePercent) {
-    return undefined
-  }
-
-  return resolved.get(nearest.id) ?? nearest.radioGroupId ?? nearest.id
 }
 
 /** One entry per radio group for progress / required checks */

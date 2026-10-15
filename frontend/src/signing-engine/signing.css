@@ -517,6 +517,41 @@ body.signing-portal {
   padding: 0;
 }
 
+/* Choice boxes are ~9pt on the page. A native 1rem control is clipped, so the
+   tick and radio dot never appear. Draw both marks to fill the placed field. */
+.signing-field--checkbox,
+.signing-field--radio {
+  overflow: visible;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.signing-field--checkbox .signing-field-checkbox,
+.signing-field--radio .signing-field-radio-option {
+  width: 100cqmin;
+  height: 100cqmin;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1.5px solid #3b6cf5;
+}
+
+.signing-field--checkbox .signing-field-checkbox {
+  border-radius: 2px;
+}
+
+.signing-field--radio {
+  padding: 0;
+}
+
+.signing-field--radio .signing-field-radio-option {
+  border-radius: 50%;
+}
+
+
 .signing-field-input {
   width: 100%;
   height: 100%;
@@ -539,12 +574,6 @@ body.signing-portal {
   background: rgba(255, 255, 255, 0.92);
 }
 
-.signing-field--radio {
-  padding: 0.2rem 0.35rem;
-  align-items: stretch;
-  justify-content: flex-start;
-}
-
 .signing-field-radio-group {
   display: flex;
   flex-direction: column;
@@ -555,22 +584,40 @@ body.signing-portal {
 }
 
 .signing-field-radio-option {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
-  font-size: 0.7rem;
-  color: #1e293b;
   cursor: pointer;
-  line-height: 1.2;
 }
 
-.signing-field-radio-option input {
-  width: 0.85rem;
-  height: 0.85rem;
-  accent-color: var(--color-primary);
-  cursor: pointer;
+.signing-field-radio-option > .signing-radio-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.signing-radio-dot {
+  width: 52cqmin;
+  height: 52cqmin;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
   flex-shrink: 0;
+}
+
+.signing-field-radio-option input[type='radio']:checked + .signing-radio-dot {
+  background: #3b6cf5;
 }
 
 .signing-field-checkbox,
@@ -584,13 +631,40 @@ body.signing-portal {
   cursor: pointer;
 }
 
-.signing-field-checkbox input,
-.signing-field-radio input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--color-primary);
+.signing-field-checkbox input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 78% 78%;
   cursor: pointer;
+  flex-shrink: 0;
 }
+
+.signing-field-radio-option input[type='radio'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.signing-field-checkbox input[type='checkbox']:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.2 6.3 11.5 13 4.5' fill='none' stroke='%233b6cf5' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
 
 .signing-field-image {
   width: 100%;
@@ -616,6 +690,16 @@ body.signing-portal {
   background: rgba(22, 163, 74, 0.12);
   border-color: var(--color-success);
   color: var(--color-success);
+}
+
+.signing-field--checkbox.filled,
+.signing-field--radio.filled,
+.signing-field--checkbox.active,
+.signing-field--radio.active {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--color-primary, #3b6cf5);
 }
 
 .signature-tabs {

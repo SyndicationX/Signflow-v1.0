@@ -292,12 +292,12 @@ export function useDocumentBuilder(
 
     const recipientId = activeProfileRecipient.id
     const { width, height } = getDefaultFieldSize(selectedFieldType)
-    const fieldId = `f_${Date.now()}`
+    const fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const choiceGroupId =
       selectedFieldType === 'radio'
-        ? `rg_${Date.now()}`
+        ? `rg_${fieldId}`
         : selectedFieldType === 'checkbox'
-          ? `cg_${Date.now()}`
+          ? `cg_${fieldId}`
           : undefined
     const profileTypes =
       selectedAssignRole === 'buyer' && profileScope !== 'all' ? profileScope : undefined
@@ -494,16 +494,19 @@ export function useDocumentBuilder(
     if (!source) return
     if (source.type !== 'radio' && source.type !== 'checkbox') return
 
-    const groupId =
-      source.type === 'radio'
-        ? getRadioGroupId(source, document.fields)
-        : source.radioGroupId
-    if (source.type === 'radio' && !groupId) return
+    let fields = document.fields
+    let groupId = source.radioGroupId?.trim()
+    if (!groupId) {
+      groupId = source.type === 'radio' ? `rg_${source.id}` : `cg_${source.id}`
+      fields = fields.map((field) =>
+        field.id === source.id ? { ...field, radioGroupId: groupId } : field,
+      )
+    }
 
     const siblings =
       source.type === 'radio'
-        ? getRadioGroupFields(document.fields, groupId!)
-        : getCheckboxColumnFields(document.fields, source)
+        ? getRadioGroupFields(fields, groupId!)
+        : getCheckboxColumnFields(fields, source)
     const { width, height } = getDefaultFieldSize(source.type)
     const bottom = siblings.reduce((max, field) => Math.max(max, field.y + field.height), source.y)
     const gap = 0.5
@@ -514,7 +517,7 @@ export function useDocumentBuilder(
       type: source.type,
       label:
         source.type === 'radio'
-          ? getNextRadioOptionLabel(document.fields, groupId!)
+          ? getNextRadioOptionLabel(fields, groupId!)
           : getNextCheckboxOptionLabel(siblings),
       x: source.x,
       y: newY,
@@ -528,7 +531,7 @@ export function useDocumentBuilder(
       ...(groupId ? { radioGroupId: groupId } : {}),
     }
 
-    saveBuilderState(recipients, [...document.fields, newField])
+    saveBuilderState(recipients, [...fields, newField])
   }
 
   const removeRecipient = (recipientId: string) => {

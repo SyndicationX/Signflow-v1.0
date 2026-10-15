@@ -138,9 +138,14 @@ export function SigningFieldOverlay({
           top: `${field.y}%`,
           width: `${field.width}%`,
           height: `${field.height}%`,
-          borderColor,
+          borderColor: '#3b6cf5',
         }}
-        onClick={onActivate}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          onActivate()
+          if ((event.target as HTMLElement).closest('input')) return
+          onValueChange(value === 'true' ? '' : 'true')
+        }}
       >
         <label className="signing-field-checkbox">
           <input
@@ -168,13 +173,13 @@ export function SigningFieldOverlay({
 
     return (
       <div
-        className={`signing-field signing-field--radio ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
+        className={`signing-field signing-field--radio ${isSelected ? 'filled' : ''}`}
         style={{
           left: `${field.x}%`,
           top: `${field.y}%`,
           width: `${field.width}%`,
           height: `${field.height}%`,
-          borderColor,
+          borderColor: '#3b6cf5',
         }}
         onClick={handleRadioSelect}
       >
@@ -184,11 +189,10 @@ export function SigningFieldOverlay({
             name={`radio-${groupId ?? field.id}`}
             checked={isSelected}
             onChange={handleRadioSelect}
-            onClick={(event) => event.stopPropagation()}
-            onFocus={onActivate}
             aria-label={field.label}
           />
-          <span>{field.label}</span>
+          <span className="signing-radio-dot" aria-hidden />
+          <span className="signing-radio-label">{field.label}</span>
         </label>
       </div>
     )

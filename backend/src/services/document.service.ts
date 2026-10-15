@@ -78,9 +78,9 @@ export class DocumentService {
     fields: NonNullable<UpdateDocumentInput['fields']>,
   ): NonNullable<UpdateDocumentInput['fields']> {
     return applyResolvedRadioGroups(
-      fields.map((field) => ({
+      fields.map((field, index) => ({
         ...field,
-        id: field.id ?? `f_${Date.now()}`,
+        id: field.id?.trim() || `f_${Date.now()}_${index}`,
       })),
     );
   }

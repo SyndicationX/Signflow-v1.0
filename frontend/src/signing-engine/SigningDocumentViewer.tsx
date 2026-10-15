@@ -276,8 +276,23 @@ export function SigningDocumentViewer({
     if (!activeField) return
 
     setCurrentPage(activeField.page)
+
     const pageElement = pageRefs.current.get(activeField.page)
-    pageElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (!pageElement) return
+
+    // Clicking a checkbox or radio on the page already in view should not jump the document.
+    if (activeField.type === 'checkbox' || activeField.type === 'radio') {
+      const scrollRoot =
+        viewerRef.current?.closest('.signing-embed-body') ??
+        viewerRef.current?.parentElement
+      const rootRect = (scrollRoot ?? document.documentElement).getBoundingClientRect()
+      const pageRect = pageElement.getBoundingClientRect()
+      const pageAlreadyVisible =
+        pageRect.bottom > rootRect.top + 8 && pageRect.top < rootRect.bottom - 8
+      if (pageAlreadyVisible) return
+    }
+
+    pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activeFieldId, fields, showAllPages])
 
   useEffect(() => {
