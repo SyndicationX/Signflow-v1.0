@@ -144,7 +144,9 @@ export const embedService = {
 
         investorRecipientId = targetBuyer.id;
         sessionType = 'countersign';
-      } else if (sponsorSignsFirst && !sellerOwnSigned) {
+      } else if (!sellerOwnSigned) {
+        // Sponsor has not signed their own fields yet — open those fields.
+        // Parallel and sponsor-first both use this path before any investor signs.
         sessionType = 'own';
       } else {
         const waitingOnInvestors = await Promise.all(
@@ -153,7 +155,7 @@ export const embedService = {
           ),
         ).then((results) => results.some((signed) => !signed));
 
-        if (sponsorSignsFirst && sellerOwnSigned && waitingOnInvestors) {
+        if (sponsorSignsFirst && waitingOnInvestors) {
           throw new AppError(
             'Waiting for investors to sign. Sponsor counter-signature opens after each investor signs.',
             403,

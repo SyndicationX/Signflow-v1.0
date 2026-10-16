@@ -225,6 +225,7 @@ export function SigningDocumentViewer({
   const viewerRef = useRef<HTMLDivElement>(null)
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const scrolledToFieldIdRef = useRef<string | null>(null)
   const [currentPage, setCurrentPage] = useState(() => getFieldPage(fields, activeFieldId))
   const [layoutWidth, setLayoutWidth] = useState(0)
 
@@ -270,7 +271,14 @@ export function SigningDocumentViewer({
   }, [activeFieldId, fields, showAllPages])
 
   useLayoutEffect(() => {
-    if (!showAllPages || !activeFieldId) return
+    if (!showAllPages || !activeFieldId) {
+      scrolledToFieldIdRef.current = null
+      return
+    }
+
+    // Field values update `fields` on every keystroke. Scroll only when the
+    // active field changes, not while the investor is typing.
+    if (scrolledToFieldIdRef.current === activeFieldId) return
 
     const activeField = fields.find((field) => field.id === activeFieldId)
     if (!activeField) return
@@ -279,6 +287,8 @@ export function SigningDocumentViewer({
 
     const pageElement = pageRefs.current.get(activeField.page)
     if (!pageElement) return
+
+    scrolledToFieldIdRef.current = activeFieldId
 
     // Clicking a checkbox or radio on the page already in view should not jump the document.
     if (activeField.type === 'checkbox' || activeField.type === 'radio') {

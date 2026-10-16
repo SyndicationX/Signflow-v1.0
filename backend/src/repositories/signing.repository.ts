@@ -247,13 +247,20 @@ export class SigningRepository {
 
       if (!buyerSigned.rows[0]?.exists) return false;
 
-      const sponsorSigned = await this.hasCompletedSponsorSessionForInvestor(
+      const sponsorCountersigned = await this.hasCompletedSponsorSessionForInvestor(
         documentId,
         sellerRecipientId,
         buyerId,
       );
+      if (sponsorCountersigned) continue;
 
-      if (!sponsorSigned) return false;
+      // Parallel and sponsor-first: the sponsor signs this document's own
+      // fields once (session is not tied to a buyer id).
+      const sponsorOwnSigned = await this.hasCompletedOwnSigningSession(
+        documentId,
+        sellerRecipientId,
+      );
+      if (!sponsorOwnSigned) return false;
     }
 
     return true;

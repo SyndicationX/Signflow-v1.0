@@ -300,6 +300,7 @@ body.signing-portal {
   z-index: 5;
   flex-shrink: 0;
   display: inline-flex;
+  flex-wrap: wrap;
   align-self: center;
   align-items: center;
   justify-content: center;
@@ -364,6 +365,7 @@ body.signing-portal {
 
 .signing-document-viewer .pdf-page-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 1rem;

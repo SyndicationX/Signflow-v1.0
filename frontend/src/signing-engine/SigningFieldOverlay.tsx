@@ -85,6 +85,73 @@ export function SigningFieldOverlay({
   }
 
   if (readOnly) {
+    const completedLabel = isFilled ? `${field.label} (completed)` : field.label
+    if (isSignatureField(field.type) && isFilled) {
+      return (
+        <div
+          className="signing-field signing-field--readonly signing-field--signature filled"
+          style={{
+            left: `${field.x}%`,
+            top: `${field.y}%`,
+            width: `${field.width}%`,
+            height: `${field.height}%`,
+            borderColor,
+          }}
+          aria-label={completedLabel}
+          title={`${field.label} — already completed on the document`}
+        >
+          <SignatureFieldContent
+            field={field}
+            value={value!}
+            signedAt={signedAt}
+            imageSrc={imageSrc}
+          />
+        </div>
+      )
+    }
+
+    if (field.type === 'checkbox') {
+      return (
+        <div
+          className={`signing-field signing-field--readonly signing-field--checkbox ${isFilled ? 'filled' : ''}`}
+          style={{
+            left: `${field.x}%`,
+            top: `${field.y}%`,
+            width: `${field.width}%`,
+            height: `${field.height}%`,
+            borderColor,
+          }}
+          aria-label={completedLabel}
+        >
+          <span className="signing-field-checkbox" aria-hidden>
+            <input type="checkbox" checked={value === 'true'} readOnly tabIndex={-1} />
+          </span>
+        </div>
+      )
+    }
+
+    if (field.type === 'radio') {
+      const isSelected = value === 'selected'
+      return (
+        <div
+          className={`signing-field signing-field--readonly signing-field--radio ${isSelected ? 'filled' : ''}`}
+          style={{
+            left: `${field.x}%`,
+            top: `${field.y}%`,
+            width: `${field.width}%`,
+            height: `${field.height}%`,
+            borderColor,
+          }}
+          aria-label={completedLabel}
+        >
+          <span className="signing-field-radio-option" aria-hidden>
+            <input type="radio" checked={isSelected} readOnly tabIndex={-1} />
+            <span className="signing-radio-dot" />
+          </span>
+        </div>
+      )
+    }
+
     return (
       <div
         className={`signing-field signing-field--readonly ${isFilled ? 'filled' : ''}`}
@@ -95,9 +162,13 @@ export function SigningFieldOverlay({
           height: `${field.height}%`,
           borderColor,
         }}
-        aria-label={isFilled ? `${field.label} (completed)` : field.label}
+        aria-label={completedLabel}
         title={isFilled ? `${field.label} — already completed on the document` : undefined}
-      />
+      >
+        {isFilled ? (
+          <span className="signing-field-text">{formatFieldDisplayValue(value!)}</span>
+        ) : null}
+      </div>
     )
   }
 

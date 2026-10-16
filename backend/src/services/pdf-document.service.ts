@@ -293,14 +293,17 @@ export class PdfDocumentService {
   private async appendAuditTrail(
     pdfDoc: PDFDocument,
     document: DocumentRow,
-    recipientId?: string,
+    recipientId?: string | string[],
   ): Promise<void> {
     const allRecipients = await documentRepository.findRecipients(document.id);
-    const recipients = recipientId
-      ? allRecipients.filter((recipient) => recipient.id === recipientId)
+    const recipientIds = recipientId == null
+      ? undefined
+      : (Array.isArray(recipientId) ? recipientId : [recipientId]);
+    const recipients = recipientIds
+      ? allRecipients.filter((recipient) => recipientIds.includes(recipient.id))
       : allRecipients;
 
-    if (recipientId && recipients.length === 0) {
+    if (recipientIds && recipients.length === 0) {
       throw new AppError('Recipient not found', 404, 'NOT_FOUND');
     }
 
@@ -308,8 +311,8 @@ export class PdfDocumentService {
     const fields = await documentRepository.findFields(document.id);
     const organization = await organizationRepository.findById(document.organization_id);
     const sendEvent = await signingRepository.getDocumentSendEvent(document.id);
-    const completedAt = recipientId
-      ? signingInfo.get(recipientId)?.signedAt
+    const completedAt = recipientIds?.length === 1
+      ? signingInfo.get(recipientIds[0])?.signedAt
       : await signingRepository.getDocumentCompletedAt(document.id);
     const generatedAt = completedAt
       ? new Date(completedAt)
@@ -381,14 +384,31 @@ export class PdfDocumentService {
       throw new AppError('Recipient not found', 404, 'NOT_FOUND');
     }
 
-    const recipientFields = filterFieldsForRecipientProfile(
-      fields,
-      recipientId,
-      recipient.profile_type as ProfileType | null | undefined,
-    );
+    const signedRecipientIds = await signingRepository.getSignedRecipientIds(documentId);
+    const includedRecipientIds = new Set<string>([recipientId, ...signedRecipientIds]);
+    const recipientById = new Map(recipients.map((item) => [item.id, item]));
+    const includedFields = fields.filter((field) => {
+      if (!includedRecipientIds.has(field.recipient_id)) return false;
+      const owner = recipientById.get(field.recipient_id);
+      if (owner?.role === 'buyer' && owner.profile_type) {
+        return filterFieldsForRecipientProfile(
+          [field],
+          field.recipient_id,
+          owner.profile_type as ProfileType,
+        ).length > 0;
+      }
+      if (field.recipient_id === recipientId) {
+        return filterFieldsForRecipientProfile(
+          [field],
+          recipientId,
+          recipient.profile_type as ProfileType | null | undefined,
+        ).length > 0;
+      }
+      return true;
+    });
     const recipientSignedAt = await buildRecipientSignedAtMap(documentId);
-    await stampFieldsOnPdf(pdfDoc, recipientFields, recipientSignedAt);
-    await this.appendAuditTrail(pdfDoc, document, recipientId);
+    await stampFieldsOnPdf(pdfDoc, includedFields, recipientSignedAt);
+    await this.appendAuditTrail(pdfDoc, document, [...includedRecipientIds]);
     await stampDocumentIdOnAllPages(pdfDoc, document.id);
 
     return Buffer.from(await pdfDoc.save());

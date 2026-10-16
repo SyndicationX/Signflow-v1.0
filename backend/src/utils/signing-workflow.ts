@@ -83,6 +83,19 @@ export function canRecipientStartSigning(
     return { allowed: true };
   }
 
+  // Equal recipient order is one signing turn: investor or sponsor may sign.
+  if (isInvestorSponsorWorkflow(recipients)) {
+    const sponsor = getSeller(recipients);
+    const buyers = getBuyers(recipients);
+    if (sponsor && buyers.length > 0) {
+      const sponsorOrder = sponsor.order_index ?? 1;
+      const sameTurn = buyers.every(
+        (buyer) => (buyer.order_index ?? 1) === sponsorOrder,
+      );
+      if (sameTurn) return { allowed: true };
+    }
+  }
+
   const recipient = recipients.find((item) => item.id === recipientId);
   if (!recipient) {
     return { allowed: true };
