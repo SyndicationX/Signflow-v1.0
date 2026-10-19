@@ -36,6 +36,16 @@ import { isUuid } from '../utils/uuid';
 
 const SIGNING_TOKEN_TTL_DAYS = 30;
 
+/**
+ * SyndicationX sets this subject when signing must stay in that portal.
+ * SignFlow still creates the document, but does not email a SignFlow link.
+ */
+const PORTAL_ONLY_EMAIL_SUBJECT = '__sx_portal_signing__';
+
+function signerEmailsSuppressed(emailSubject: string | null | undefined): boolean {
+  return (emailSubject ?? '').trim() === PORTAL_ONLY_EMAIL_SUBJECT;
+}
+
 interface UpdateDocumentInput {
   title?: string;
   status?: DocumentStatus;
@@ -780,6 +790,8 @@ export class DocumentService {
     investorRecipientId?: string,
     sentIp?: string,
   ): Promise<void> {
+    if (signerEmailsSuppressed(emailSubject)) return;
+
     const token = generateSecureToken(24);
     await signingRepository.create({
       tokenHash: hashToken(token),
@@ -849,6 +861,8 @@ export class DocumentService {
 
     const recipients = await documentRepository.findRecipients(documentId);
     if (!isInvestorSponsorWorkflow(recipients)) return;
+
+    if (signerEmailsSuppressed(document.email_subject)) return;
 
     const seller = getSeller(recipients);
     const investor = recipients.find((recipient) => recipient.id === investorRecipientId);

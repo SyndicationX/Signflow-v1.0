@@ -26,6 +26,16 @@ export class SigningController {
     res.send(buffer);
   };
 
+  saveProgress = async (req: Request, res: Response): Promise<void> => {
+    const result = await signingService.saveProgress(
+      paramAsString(req.params.token),
+      req.body.fieldValues,
+      req.body.page,
+      buildSigningEmbedContext(req),
+    );
+    res.json(result);
+  };
+
   complete = async (req: Request, res: Response): Promise<void> => {
     const result = await signingService.complete(
       paramAsString(req.params.token),

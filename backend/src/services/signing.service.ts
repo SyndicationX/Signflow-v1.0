@@ -90,6 +90,11 @@ export class SigningService {
       recipientId: session.recipient_id,
     });
 
+    const draftPage = await documentRepository.getRecipientDraftPage(
+      session.document_id,
+      session.recipient_id,
+    );
+
     return {
       document: {
         ...document,
@@ -97,8 +102,57 @@ export class SigningService {
       },
       recipientId: session.recipient_id,
       investorRecipientId: session.investor_recipient_id ?? undefined,
+      draftPage,
       token,
     };
+  }
+
+  /** Persist in-progress field values and the page the signer is on, without completing. */
+  async saveProgress(
+    token: string,
+    fieldValues: Record<string, string> | undefined,
+    page: number | undefined,
+    embed?: SigningEmbedContext,
+  ): Promise<{ success: true; draftPage: number }> {
+    const tokenHash = hashToken(token);
+    const session = await signingRepository.findValidByTokenHash(tokenHash);
+    if (!session) {
+      throw new AppError('Invalid signing link', 404, 'INVALID_TOKEN');
+    }
+
+    await this.assertEmbedAccessAllowed(session.document_id, embed);
+
+    if (fieldValues && Object.keys(fieldValues).length > 0) {
+      const recipientFields = await documentRepository.findFields(session.document_id);
+      const allowed = new Set(
+        recipientFields
+          .filter((field) => field.recipient_id === session.recipient_id)
+          .map((field) => field.id),
+      );
+      const scoped: Record<string, string> = {};
+      for (const [fieldId, value] of Object.entries(fieldValues)) {
+        if (allowed.has(fieldId)) scoped[fieldId] = value;
+      }
+      if (Object.keys(scoped).length > 0) {
+        await documentRepository.updateFieldValues(session.document_id, scoped);
+      }
+    }
+
+    const currentPage = await documentRepository.getRecipientDraftPage(
+      session.document_id,
+      session.recipient_id,
+    );
+    const nextPage =
+      page != null && Number.isFinite(page) ? Math.max(1, Math.floor(page)) : currentPage;
+    if (page != null) {
+      await documentRepository.updateRecipientDraftPage(
+        session.document_id,
+        session.recipient_id,
+        nextPage,
+      );
+    }
+
+    return { success: true, draftPage: nextPage };
   }
 
   async getSessionDocumentPdf(

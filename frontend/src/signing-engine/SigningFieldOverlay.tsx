@@ -146,7 +146,7 @@ export function SigningFieldOverlay({
         >
           <span className="signing-field-radio-option" aria-hidden>
             <input type="radio" checked={isSelected} readOnly tabIndex={-1} />
-            <span className="signing-radio-dot" />
+            <span className={`signing-radio-dot${isSelected ? ' signing-radio-dot--on' : ''}`} />
           </span>
         </div>
       )
@@ -235,7 +235,7 @@ export function SigningFieldOverlay({
     const groupId = getRadioGroupId(field, allFields)
     const isSelected = value === 'selected'
 
-    const handleRadioSelect = () => {
+    const selectOption = () => {
       onActivate()
       if (!isSelected) {
         onValueChange('selected')
@@ -244,7 +244,7 @@ export function SigningFieldOverlay({
 
     return (
       <div
-        className={`signing-field signing-field--radio ${isSelected ? 'filled' : ''}`}
+        className={`signing-field signing-field--radio ${isActive ? 'active' : ''} ${isSelected ? 'filled' : ''}`}
         style={{
           left: `${field.x}%`,
           top: `${field.y}%`,
@@ -252,17 +252,22 @@ export function SigningFieldOverlay({
           height: `${field.height}%`,
           borderColor: '#3b6cf5',
         }}
-        onClick={handleRadioSelect}
+        onClick={selectOption}
       >
         <label className="signing-field-radio-option">
           <input
             type="radio"
             name={`radio-${groupId ?? field.id}`}
             checked={isSelected}
-            onChange={handleRadioSelect}
+            readOnly
+            onChange={selectOption}
+            onClick={(event) => event.preventDefault()}
             aria-label={field.label}
           />
-          <span className="signing-radio-dot" aria-hidden />
+          <span
+            className={`signing-radio-dot${isSelected ? ' signing-radio-dot--on' : ''}`}
+            aria-hidden
+          />
           <span className="signing-radio-label">{field.label}</span>
         </label>
       </div>

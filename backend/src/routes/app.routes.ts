@@ -15,6 +15,7 @@ import { embedController } from '../controllers/embed.controller';
 import { organizationController } from '../controllers/organization.controller';
 import {
   completeSigningSchema,
+  saveSigningProgressSchema,
   createApiKeySchema,
   createWebhookSchema,
   setSigningProfileSchema,
@@ -155,6 +156,12 @@ router.post(
 
 router.get('/signing/sessions/:token/file', signingRateLimiter, signingController.serveDocument);
 router.get('/signing/sessions/:token', signingRateLimiter, signingController.getSession);
+router.post(
+  '/signing/sessions/:token/progress',
+  signingRateLimiter,
+  validateBody(saveSigningProgressSchema),
+  signingController.saveProgress,
+);
 router.post(
   '/signing/sessions/:token/complete',
   signingRateLimiter,

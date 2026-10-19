@@ -20,10 +20,15 @@ interface SigningDocumentViewerProps {
   onFieldActivate: (fieldId: string) => void
   onFieldValueChange: (fieldId: string, value: string) => void
   onSignatureRequest: (fieldId: string) => void
+  /** Increments when Previous/Next field should scroll and focus. */
+  fieldNavigationRequest?: number
   /** Bust PDF cache when signed content on the server changes. */
   pdfRevision?: string
   /** Stack every PDF page vertically for continuous scroll (investor embed). */
   showAllPages?: boolean
+  /** Page to open when the signer returns to a saved draft. */
+  resumePage?: number
+  onVisiblePageChange?: (page: number) => void
 }
 
 function getFieldPage(fields: DocumentField[], fieldId?: string): number {
@@ -185,19 +190,20 @@ function SigningPdfPage({
 
         {!showFileError &&
           pageFields.map((field) => (
-            <SigningFieldOverlay
-              key={field.id}
-              field={field}
-              allFields={allFields}
-              value={fieldValues[field.id]}
-              signedAt={fieldSignedAt?.[field.id]}
-              isActive={field.id === activeFieldId}
-              borderColor={getRecipientColor(field.recipientId)}
-              readOnly={readOnlyFieldIds?.has(field.id)}
-              onActivate={() => onFieldActivate(field.id)}
-              onValueChange={(value) => onFieldValueChange(field.id, value)}
-              onSignatureRequest={() => onSignatureRequest(field.id)}
-            />
+            <div key={field.id} className="signing-field-slot" data-signing-field={field.id}>
+              <SigningFieldOverlay
+                field={field}
+                allFields={allFields}
+                value={fieldValues[field.id]}
+                signedAt={fieldSignedAt?.[field.id]}
+                isActive={field.id === activeFieldId}
+                borderColor={getRecipientColor(field.recipientId)}
+                readOnly={readOnlyFieldIds?.has(field.id)}
+                onActivate={() => onFieldActivate(field.id)}
+                onValueChange={(value) => onFieldValueChange(field.id, value)}
+                onSignatureRequest={() => onSignatureRequest(field.id)}
+              />
+            </div>
           ))}
       </div>
     </div>
@@ -219,14 +225,23 @@ export function SigningDocumentViewer({
   onFieldActivate,
   onFieldValueChange,
   onSignatureRequest,
+  fieldNavigationRequest = 0,
   showAllPages = false,
   pdfRevision,
+  resumePage,
+  onVisiblePageChange,
 }: SigningDocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const pageContainerRef = useRef<HTMLDivElement>(null)
+  const fieldsRef = useRef(fields)
+  fieldsRef.current = fields
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const scrolledToFieldIdRef = useRef<string | null>(null)
-  const [currentPage, setCurrentPage] = useState(() => getFieldPage(fields, activeFieldId))
+  const resumeReadyRef = useRef(!showAllPages)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = resumePage && resumePage > 0 ? Math.floor(resumePage) : 0
+    return saved > 0 ? saved : getFieldPage(fields, activeFieldId)
+  })
   const [layoutWidth, setLayoutWidth] = useState(0)
 
   const resolvedFileUrl = resolveSigningDocumentFileUrl(signingToken, documentId, fileUrl)
@@ -260,15 +275,43 @@ export function SigningDocumentViewer({
     setCurrentPage((page) => Math.min(page, totalPages))
   }, [totalPages])
 
+  const appliedFieldFocusRef = useRef(0)
+
+  useEffect(() => {
+    if (!fieldNavigationRequest || !activeFieldId) return
+    if (appliedFieldFocusRef.current === fieldNavigationRequest) return
+
+    const activeField = fieldsRef.current.find((field) => field.id === activeFieldId)
+    if (!activeField) return
+
+    if (!showAllPages && currentPage !== activeField.page) {
+      setCurrentPage(activeField.page)
+      return
+    }
+
+    const scope = showAllPages ? viewerRef.current : pageContainerRef.current
+    const slot = scope?.querySelector(`[data-signing-field="${CSS.escape(activeFieldId)}"]`)
+    const target = slot?.querySelector<HTMLElement>('.signing-field') ?? null
+    if (!target) return
+
+    appliedFieldFocusRef.current = fieldNavigationRequest
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    const focusable = target.matches('button, input, textarea, select')
+      ? target
+      : target.querySelector<HTMLElement>('input, textarea, select, button')
+    focusable?.focus({ preventScroll: true })
+  }, [fieldNavigationRequest, activeFieldId, currentPage, showAllPages, pdfPageCount])
+
   useLayoutEffect(() => {
     if (showAllPages) return
     if (!activeFieldId) return
+    if (appliedFieldFocusRef.current !== fieldNavigationRequest) return
 
-    const activeField = fields.find((field) => field.id === activeFieldId)
+    const activeField = fieldsRef.current.find((field) => field.id === activeFieldId)
     if (activeField) {
       setCurrentPage(activeField.page)
     }
-  }, [activeFieldId, fields, showAllPages])
+  }, [activeFieldId, fieldNavigationRequest, showAllPages])
 
   useLayoutEffect(() => {
     if (!showAllPages || !activeFieldId) {
@@ -276,8 +319,13 @@ export function SigningDocumentViewer({
       return
     }
 
-    // Field values update `fields` on every keystroke. Scroll only when the
-    // active field changes, not while the investor is typing.
+    if (resumePage && resumePage > 1) {
+      scrolledToFieldIdRef.current = activeFieldId
+      return
+    }
+
+    // Scroll to a field only when that field becomes active. Page controls must
+    // not be pulled back to an input.
     if (scrolledToFieldIdRef.current === activeFieldId) return
 
     const activeField = fields.find((field) => field.id === activeFieldId)
@@ -303,7 +351,7 @@ export function SigningDocumentViewer({
     }
 
     pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [activeFieldId, fields, showAllPages])
+  }, [activeFieldId, showAllPages, resumePage])
 
   useEffect(() => {
     const target = showAllPages ? viewerRef.current : pageContainerRef.current
@@ -342,6 +390,21 @@ export function SigningDocumentViewer({
     },
     [],
   )
+
+  useLayoutEffect(() => {
+    if (!showAllPages || pdfPageCount == null || resumeReadyRef.current) return
+    const page = Math.min(Math.max(Math.floor(resumePage ?? 1), 1), pdfPageCount)
+    if (page > 1) {
+      pageRefs.current.get(page)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+      setCurrentPage(page)
+    }
+    resumeReadyRef.current = true
+  }, [showAllPages, pdfPageCount, resumePage])
+
+  useEffect(() => {
+    if (!resumeReadyRef.current) return
+    onVisiblePageChange?.(currentPage)
+  }, [currentPage, onVisiblePageChange, pdfPageCount])
 
   const scrollToPage = useCallback((pageNumber: number, behavior: ScrollBehavior = 'smooth') => {
     const clamped = Math.max(1, Math.min(pageNumber, totalPages))

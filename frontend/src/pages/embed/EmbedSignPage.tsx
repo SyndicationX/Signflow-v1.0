@@ -61,6 +61,7 @@ export function EmbedSignPage() {
         investorRecipientId={data.investorRecipientId}
         mode="iframe"
         token={token}
+        resumePage={data.draftPage}
         onComplete={async (fieldValues) => {
           await api.signing.complete(token, fieldValues)
           await queryClient.invalidateQueries({ queryKey: ['signing-session', token] })

@@ -183,8 +183,21 @@ export const api = {
         document: Document
         recipientId: string
         investorRecipientId?: string
+        draftPage?: number
         token: string
       }>(`/signing/sessions/${token}`),
+
+    saveProgress: (
+      token: string,
+      body: { fieldValues?: Record<string, string>; page?: number },
+    ) =>
+      apiRequest<{ success: boolean; draftPage: number }>(
+        `/signing/sessions/${token}/progress`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
 
     setProfile: (token: string, profileType: ProfileType) =>
       apiRequest<{ success: boolean; profileType: ProfileType }>(

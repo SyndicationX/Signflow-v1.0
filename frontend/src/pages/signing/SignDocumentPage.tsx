@@ -62,6 +62,7 @@ export function SignDocumentPage() {
         investorRecipientId={data.investorRecipientId}
         mode="public"
         token={token}
+        resumePage={data.draftPage}
         onComplete={async (fieldValues) => {
           await api.signing.complete(token!, fieldValues)
           await queryClient.invalidateQueries({ queryKey: ['signing-session', token] })

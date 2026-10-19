@@ -137,7 +137,7 @@ export function FieldTypePanel({
 
       {selectedFieldType === 'radio' && (
         <p className="field-type-hint">
-          Place the first option, then click + on any option to add another field in the same group. Clients can choose only one.
+          Click the document to place the first option. Click + on that option to add more choices in the same group. The signer can select only one of those choices. Clicking the document again starts a separate group, and that group is independent.
         </p>
       )}
 
@@ -216,7 +216,11 @@ export function FieldTypePanel({
                             ? 'Add radio option field'
                             : 'Add checkbox field'
                         }
-                        title={field.type === 'radio' ? 'Add option' : 'Add checkbox'}
+                        title={
+                          field.type === 'radio'
+                            ? 'Add a choice in this group. The signer can select only one.'
+                            : 'Add checkbox'
+                        }
                         onClick={() => onAddChoiceOption(field.id)}
                       >
                         +

@@ -43,6 +43,37 @@ export function isRadioGroupFilled(
   return getRadioGroupFields(fields, groupId).some((field) => isRadioSelected(fieldValues, field.id))
 }
 
+/**
+ * Saved radio values for one signing session.
+ * A group with a stored choice keeps that choice and clears its other options.
+ * Groups with no stored choice are left untouched, so unrelated radios stay independent.
+ */
+export function restoreSavedRadioValues(fields: DocumentField[]): Record<string, string> {
+  const resolved = resolveRadioGroupIds(fields)
+  const grouped = new Map<string, DocumentField[]>()
+
+  for (const field of fields) {
+    if (field.type !== 'radio') continue
+    const groupId = resolved.get(field.id) ?? field.id
+    const group = grouped.get(groupId) ?? []
+    group.push(field)
+    grouped.set(groupId, group)
+  }
+
+  const updates: Record<string, string> = {}
+  for (const groupFields of grouped.values()) {
+    const selected = groupFields.filter((field) => field.value === 'selected')
+    if (selected.length === 0) continue
+
+    const keeperId = selected[0].id
+    for (const field of groupFields) {
+      updates[field.id] = field.id === keeperId ? 'selected' : ''
+    }
+  }
+
+  return updates
+}
+
 /** Apply mutual exclusion: one selected option per radio group. */
 export function buildRadioGroupSelectionUpdates(
   fields: DocumentField[],

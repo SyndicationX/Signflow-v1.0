@@ -297,6 +297,33 @@ export class DocumentRepository {
     }
   }
 
+  async getRecipientDraftPage(
+    documentId: string,
+    recipientId: string,
+  ): Promise<number> {
+    const result = await pool.query<{ draft_page: number | null }>(
+      `SELECT draft_page
+       FROM document_recipients
+       WHERE document_id = $1 AND id = $2`,
+      [documentId, recipientId],
+    );
+    const page = Number(result.rows[0]?.draft_page);
+    return Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  }
+
+  async updateRecipientDraftPage(
+    documentId: string,
+    recipientId: string,
+    page: number,
+  ): Promise<void> {
+    await pool.query(
+      `UPDATE document_recipients
+       SET draft_page = $1
+       WHERE document_id = $2 AND id = $3`,
+      [Math.max(1, Math.floor(page)), documentId, recipientId],
+    );
+  }
+
   async updateRecipientProfileType(
     documentId: string,
     recipientId: string,

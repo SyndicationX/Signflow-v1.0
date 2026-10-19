@@ -66,6 +66,11 @@ export const completeSigningSchema = z.object({
   fieldValues: z.record(z.string(), z.string()).optional(),
 });
 
+export const saveSigningProgressSchema = z.object({
+  fieldValues: z.record(z.string(), z.string()).optional(),
+  page: z.number().int().min(1).max(500).optional(),
+});
+
 export const setSigningProfileSchema = z.object({
   profileType,
 });

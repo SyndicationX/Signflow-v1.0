@@ -474,11 +474,13 @@ export function PdfCanvas({
 
           {!showPlaceholder && (
             <p
-              className="pdf-placement-hint"
+              className={`pdf-placement-hint${canPlaceFields && selectedFieldType === 'radio' ? ' pdf-placement-hint--radio' : ''}`}
               style={canPlaceFields && activeProfileColor ? { color: activeProfileColor } : undefined}
             >
               {canPlaceFields
-                ? 'Click to place · drag to move · corner handle to resize'
+                ? selectedFieldType === 'radio'
+                  ? 'Click to place the first option. Use + on it to add choices in the same group. The signer can select only one.'
+                  : 'Click to place · drag to move · corner handle to resize'
                 : placementBlockedMessage ?? 'Select a profile type with a recipient to place fields'}
             </p>
           )}
@@ -528,7 +530,11 @@ export function PdfCanvas({
                       aria-label={
                         field.type === 'radio' ? 'Add radio option' : 'Add checkbox'
                       }
-                      title={field.type === 'radio' ? 'Add option' : 'Add checkbox'}
+                      title={
+                        field.type === 'radio'
+                          ? 'Add a choice in this group. The signer can select only one.'
+                          : 'Add checkbox'
+                      }
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()

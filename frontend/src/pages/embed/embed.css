@@ -10,6 +10,11 @@ html.signflow-embed-doc #root {
 
   height: 100%;
 
+  max-height: 100%;
+
+  /* Beat the app shell's min-height: 100vh / 100dvh, which grows past the iframe and clips the PDF. */
+  min-height: 0 !important;
+
   margin: 0;
 
 }
@@ -52,11 +57,69 @@ body.signflow-embed.signing-portal {
 
 }
 
+/*
+ * Investor embed: lock the shell to the iframe viewport and scroll only the PDF.
+ * Percentage heights inside the portal iframe collapse, which clips the document
+ * with no scrollbar.
+ */
+html.signflow-embed-doc:has(body.signing-portal),
+html.signflow-embed-doc:has(body.signing-portal) body.signing-portal,
+html.signflow-embed-doc:has(body.signing-portal) #root {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  scroll-behavior: auto !important;
+}
+
+html.signflow-embed-doc:has(body.signing-portal) .embed-sign-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html.signflow-embed-doc:has(body.signing-portal) .signing-engine-iframe,
+html.signflow-embed-doc:has(body.signing-portal) .signing-embed-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  /* height: 0 lets Chrome/Edge honor flex and keep a real scrollport. */
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+html.signflow-embed-doc:has(body.signing-portal) .signing-embed-chrome {
+  flex: 0 0 auto !important;
+  position: relative;
+  z-index: 6;
+}
+
+html.signflow-embed-doc:has(body.signing-portal) .signing-embed-body {
+  flex: 1 1 auto !important;
+  /* Chrome/Edge size height:auto to the PDF and then refuse to scroll it. */
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 
 
 .embed-sign-shell {
 
-  flex: 1;
+  flex: 1 1 0;
 
   min-height: 0;
 
@@ -369,7 +432,7 @@ body.signflow-embed.signing-portal {
 
 .embed-builder-layout .pdf-viewer-area {
 
-  flex: 1 1 auto;
+  flex: 1 1 0;
 
   min-width: 0;
 

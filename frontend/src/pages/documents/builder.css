@@ -1000,6 +1000,13 @@
   z-index: 1;
 }
 
+.pdf-placement-hint--radio {
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  text-align: center;
+  line-height: 1.4;
+}
+
 .pdf-page-content {
   position: relative;
   width: 100%;
