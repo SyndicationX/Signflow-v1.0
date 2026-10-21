@@ -84,6 +84,7 @@ export function DocumentBuilderPage() {
         mode={profileScopeModal?.mode ?? 'place'}
         fieldLabel={profileScopeModal?.fieldLabel ?? 'Field'}
         initialScope={profileScopeModal?.initialScope ?? 'all'}
+        initialRequired={profileScopeModal?.initialRequired ?? true}
         onClose={builder.cancelProfileScope}
         onConfirm={builder.confirmProfileScope}
       />
@@ -107,6 +108,8 @@ export function DocumentBuilderPage() {
           onAddChoiceOption={builder.addChoiceOption}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
+          isFieldVisible={builder.isFieldVisibleInPreview}
+          partyLabel={builder.activeAssignRole === 'buyer' ? 'investor' : 'sponsor'}
         />
         <Suspense fallback={<LoadingState label="Loading document preview" />}>
           <PdfCanvas

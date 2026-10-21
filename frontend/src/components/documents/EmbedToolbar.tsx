@@ -6,19 +6,31 @@ interface EmbedToolbarProps {
   activeAssignRole: 'buyer' | 'seller'
   fields: DocumentField[]
   recipients: Recipient[]
+  sponsorRecipients: Recipient[]
+  selectedSponsorEmail: string
   canSaveTemplate: boolean
   isSaving?: boolean
   onSelectAssignRole: (role: 'buyer' | 'seller') => void
+  onSelectSponsor: (email: string) => void
   onSaveTemplate: () => void
+}
+
+function sponsorChoiceLabel(recipient: Recipient): string {
+  const email = recipient.email.trim().toLowerCase()
+  if (!email || email.endsWith('@embed.local')) return 'Any sponsor'
+  return recipient.name.trim() || email
 }
 
 export function EmbedToolbar({
   activeAssignRole,
   fields,
   recipients,
+  sponsorRecipients,
+  selectedSponsorEmail,
   canSaveTemplate,
   isSaving = false,
   onSelectAssignRole,
+  onSelectSponsor,
   onSaveTemplate,
 }: EmbedToolbarProps) {
   const saveDisabledReason = getSaveEmbedTemplateDisabledReason(fields, recipients)
@@ -46,6 +58,26 @@ export function EmbedToolbar({
           Sponsor
         </button>
       </div>
+      {activeAssignRole === 'seller' && sponsorRecipients.length > 0 && (
+        <label className="embed-builder-sponsor-picker">
+          <span>Sponsor who signs</span>
+          <select
+            value={
+              sponsorRecipients.some((recipient) => recipient.email === selectedSponsorEmail)
+                ? selectedSponsorEmail
+                : sponsorRecipients[0]?.email ?? ''
+            }
+            onChange={(event) => onSelectSponsor(event.target.value)}
+            aria-label="Choose which sponsor signs this field"
+          >
+            {sponsorRecipients.map((recipient) => (
+              <option key={recipient.id} value={recipient.email}>
+                {sponsorChoiceLabel(recipient)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <span className="embed-builder-toolbar-hint">Click the PDF to place fields</span>
       <button
         type="button"

@@ -16,22 +16,19 @@ export function isSignerFieldComplete(
 }
 
 /**
- * Fields Next and Previous should visit.
- * A sponsor moves through their signature and initial fields.
- * Other signers move through their required fields.
+ * Fields Next and Previous should visit, in reading order.
+ * Every field is included, including each radio option and optional fields.
  * Completion does not remove a field from this list.
  */
 export function navigationFieldsForSigner(
-  role: string | undefined,
+  _role: string | undefined,
   fields: DocumentField[],
 ): DocumentField[] {
-  const required = fields.filter((field) => field.required)
-  if (role !== 'seller') return required
-
-  const signatures = fields.filter(
-    (field) => field.type === 'signature' || field.type === 'initial',
-  )
-  return signatures.length > 0 ? signatures : required
+  return [...fields].sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page
+    if (a.y !== b.y) return a.y - b.y
+    return a.x - b.x
+  })
 }
 
 /** Next eligible field. Filled fields stay in the sequence. */

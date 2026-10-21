@@ -40,6 +40,8 @@ export function EmbedDocumentBuilder() {
   const [searchParams] = useSearchParams()
   const { data: document, isLoading, isError, error, refetch } = useDocument(id)
   const builder = useDocumentBuilder(document, id, { embedMode: true })
+  const builderRef = useRef(builder)
+  builderRef.current = builder
   const uploadDocumentFile = useUploadDocumentFile(id)
   const readyNotifiedRef = useRef(false)
   const [currentPage, setCurrentPage] = useState(() => readRequestedEmbedPage(searchParams))
@@ -81,11 +83,27 @@ export function EmbedDocumentBuilder() {
       }
       if (data.event === 'refresh-document') {
         void refetch()
+        return
+      }
+      if (data.event === 'save-template' || data.event === 'request-save-template') {
+        const current = builderRef.current
+        const finish = () => {
+          if (!document) return
+          notifyEmbedParent('builder-save-template', {
+            documentId: document.id,
+            title: document.title,
+          })
+        }
+        if (!current) {
+          finish()
+          return
+        }
+        void current.flushPendingSave().then(finish, finish)
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [refetch])
+  }, [document, refetch])
 
   const handleSaveTemplate = useCallback(() => {
     if (!builder?.canSaveTemplate || !document) return
@@ -136,9 +154,12 @@ export function EmbedDocumentBuilder() {
         activeAssignRole={builder.activeAssignRole}
         fields={builder.document.fields}
         recipients={builder.document.recipients}
+        sponsorRecipients={builder.sponsorRecipients}
+        selectedSponsorEmail={builder.selectedSponsorEmail}
         canSaveTemplate={builder.canSaveTemplate}
         isSaving={builder.isSaving}
         onSelectAssignRole={builder.setSelectedRecipientRole}
+        onSelectSponsor={builder.setSelectedSponsorEmail}
         onSaveTemplate={handleSaveTemplate}
       />
 
@@ -190,6 +211,8 @@ export function EmbedDocumentBuilder() {
           onAddChoiceOption={builder.addChoiceOption}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
+          isFieldVisible={builder.isFieldVisibleInPreview}
+          partyLabel={builder.activeAssignRole === 'buyer' ? 'investor' : 'sponsor'}
         />
       </div>
 
@@ -198,6 +221,7 @@ export function EmbedDocumentBuilder() {
         mode={profileScopeModal?.mode ?? 'place'}
         fieldLabel={profileScopeModal?.fieldLabel ?? 'Field'}
         initialScope={profileScopeModal?.initialScope ?? 'all'}
+        initialRequired={profileScopeModal?.initialRequired ?? true}
         onClose={builder.cancelProfileScope}
         onConfirm={builder.confirmProfileScope}
       />

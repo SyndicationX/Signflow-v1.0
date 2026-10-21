@@ -130,6 +130,46 @@ export class DocumentService {
     });
   }
 
+  /** Keep fields already stored when a patch only replaces recipients. */
+  private remapStoredFieldsToRecipients(
+    fields: FieldRow[],
+    previousRecipients: RecipientRow[],
+    insertedRecipients: RecipientRow[],
+  ): NonNullable<UpdateDocumentInput['fields']> {
+    const idMap = new Map<string, string>();
+    for (const previous of previousRecipients) {
+      const next =
+        insertedRecipients.find(
+          (recipient) =>
+            recipient.email.toLowerCase() === previous.email.toLowerCase() &&
+            recipient.role === previous.role,
+        ) ?? insertedRecipients.find((recipient) => recipient.role === previous.role);
+      if (next) idMap.set(previous.id, next.id);
+    }
+
+    const fallbackRecipientId = insertedRecipients[0]?.id;
+
+    return fields.map((field) => ({
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      x: Number(field.x),
+      y: Number(field.y),
+      width: Number(field.width),
+      height: Number(field.height),
+      page: field.page,
+      recipientId: idMap.get(field.recipient_id) ?? fallbackRecipientId ?? field.recipient_id,
+      required: field.required,
+      value: field.value ?? undefined,
+      options: field.options ?? undefined,
+      radioGroupId: field.radio_group_id ?? undefined,
+      profileType: field.profile_type ?? undefined,
+      profileTypes: field.profile_types ?? undefined,
+      pageHash: field.page_hash ?? undefined,
+      templatePage: field.template_page ?? field.page,
+    }));
+  }
+
   private remapFieldRecipientIdsToExisting(
     fields: NonNullable<UpdateDocumentInput['fields']>,
     existingRecipients: Awaited<ReturnType<typeof documentRepository.findRecipients>>,
@@ -565,16 +605,25 @@ export class DocumentService {
     });
 
     if (input.recipients) {
+      const previousRecipients = await documentRepository.findRecipients(id);
+      // Read fields first. Replacing recipients cascades and deletes their fields.
+      const storedFields = input.fields
+        ? null
+        : await documentRepository.findFields(id);
       const inserted = await documentRepository.replaceRecipients(id, input.recipients);
-
-      if (input.fields) {
-        const normalizedFields = this.normalizeRadioGroupIds(input.fields);
-        const remappedFields = this.remapFieldRecipientIds(normalizedFields, input.recipients, inserted);
-        const anchoredFields = await this.enrichFieldsWithPageHashes(id, remappedFields);
-        await documentRepository.replaceFields(id, anchoredFields);
-      } else {
-        await documentRepository.replaceFields(id, []);
-      }
+      const normalizedFields = input.fields
+        ? this.remapFieldRecipientIds(
+            this.normalizeRadioGroupIds(input.fields),
+            input.recipients,
+            inserted,
+          )
+        : this.remapStoredFieldsToRecipients(
+            storedFields ?? [],
+            previousRecipients,
+            inserted,
+          );
+      const anchoredFields = await this.enrichFieldsWithPageHashes(id, normalizedFields);
+      await documentRepository.replaceFields(id, anchoredFields);
     } else if (input.fields) {
       const existingRecipients = await documentRepository.findRecipients(id);
       const normalizedFields = this.normalizeRadioGroupIds(input.fields);

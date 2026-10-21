@@ -75,6 +75,55 @@ export function useDocumentBuilder(
   const hasPromptedFirstRecipient = useRef(false)
   const isSeedingEmbedRecipients = useRef(false)
   const previewProfileTouched = useRef(false)
+  const latestFieldsRef = useRef<DocumentField[]>([])
+  const latestRecipientsRef = useRef<Recipient[]>([])
+  const layoutReadyRef = useRef(false)
+  const revisionRef = useRef(0)
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+
+  const persistLayout = (nextRecipients: Recipient[], nextFields: DocumentField[]) => {
+    revisionRef.current += 1
+    layoutReadyRef.current = true
+    latestRecipientsRef.current = nextRecipients
+    latestFieldsRef.current = nextFields
+    const run = saveQueueRef.current.then(() => {
+      const revisionAtStart = revisionRef.current
+      return updateDocument
+        .mutateAsync({
+          recipients: latestRecipientsRef.current,
+          fields: latestFieldsRef.current,
+        })
+        .then((saved) => {
+          if (revisionRef.current !== revisionAtStart) return
+          latestFieldsRef.current = saved.fields
+          latestRecipientsRef.current = saved.recipients
+          revisionRef.current = 0
+        })
+    })
+    saveQueueRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
+  const flushPendingSave = () => saveQueueRef.current
+
+  useEffect(() => {
+    if (!document) return
+    const fields = document.fields
+    const recipients = document.recipients
+    let cancelled = false
+    void saveQueueRef.current.then(() => {
+      if (cancelled || revisionRef.current !== 0) return
+      latestFieldsRef.current = fields
+      latestRecipientsRef.current = recipients
+      layoutReadyRef.current = true
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [document])
 
   useEffect(() => {
     if (embedMode) return
@@ -95,8 +144,8 @@ export function useDocumentBuilder(
     const recipients = [...document.recipients]
     if (!hasBuyer) recipients.push(EMBED_DEFAULT_RECIPIENTS[0])
     if (!hasSeller) recipients.push(EMBED_DEFAULT_RECIPIENTS[1])
-    updateDocument.mutate({ recipients })
-  }, [document, embedMode, updateDocument])
+    void persistLayout(recipients, latestFieldsRef.current.length ? latestFieldsRef.current : document.fields)
+  }, [document, embedMode, persistLayout])
 
   useEffect(() => {
     if (!document?.recipients.length) return
@@ -132,7 +181,10 @@ export function useDocumentBuilder(
   }
 
   const recipients = document.recipients
-  const activeProfileRecipient = recipients.find((recipient) => recipient.role === selectedAssignRole)
+  const roleRecipients = recipients.filter((recipient) => recipient.role === selectedAssignRole)
+  const activeProfileRecipient =
+    roleRecipients.find((recipient) => recipient.email === selectedRecipientEmail) ??
+    roleRecipients[0]
   const activeRecipientId = activeProfileRecipient?.id ?? ''
   const canPlaceFields = Boolean(activeProfileRecipient)
   const placementBlockedMessage = canPlaceFields
@@ -167,21 +219,21 @@ export function useDocumentBuilder(
       return '#64748b'
     }
     const recipient = recipients.find((r) => r.id === field.recipientId)
+    if (recipient?.color) return recipient.color
     return recipient ? getRecipientRoleStyle(recipient.role).color : '#64748b'
   }
 
   const isFieldVisibleInPreview = (field: DocumentField) => {
-    if (!isProfilePreviewEnabled) {
-      return true
-    }
-
     const recipient = recipients.find((item) => item.id === field.recipientId)
-    // Sponsor fields are always visible in the builder preview.
-    if (recipient?.role !== 'buyer') {
-      return true
+    const fieldRole =
+      recipient?.role === 'seller' ? 'seller' : recipient?.role === 'buyer' ? 'buyer' : null
+    if (fieldRole !== selectedAssignRole) return false
+
+    if (selectedAssignRole === 'buyer' && isProfilePreviewEnabled) {
+      return fieldAppliesToProfile(field, previewProfileType)
     }
 
-    return fieldAppliesToProfile(field, previewProfileType)
+    return true
   }
 
   const handlePreviewProfileTypeChange = (profileType: ProfileType) => {
@@ -210,10 +262,10 @@ export function useDocumentBuilder(
   }
 
   const saveBuilderState = (nextRecipients: Recipient[], nextFields: DocumentField[]) => {
-    updateDocument.mutate({
-      recipients: nextRecipients,
-      fields: normalizeFieldRecipientIds(nextRecipients, nextFields),
-    })
+    void persistLayout(
+      nextRecipients,
+      normalizeFieldRecipientIds(nextRecipients, nextFields),
+    )
   }
 
   const openAddRecipientModal = () => {
@@ -287,6 +339,7 @@ export function useDocumentBuilder(
   const createFieldAt = (
     placement: PendingFieldPlacement,
     profileScope: ProfileScopeSelection,
+    required: boolean,
   ) => {
     if (!activeProfileRecipient) return
 
@@ -317,7 +370,7 @@ export function useDocumentBuilder(
       height,
       page: placement.page,
       recipientId,
-      required: newFieldRequired,
+      required,
       ...(profileTypes ? { profileTypes } : {}),
       ...(choiceGroupId ? { radioGroupId: choiceGroupId } : {}),
     }
@@ -352,7 +405,7 @@ export function useDocumentBuilder(
       return
     }
 
-    createFieldAt(placement, 'all')
+    createFieldAt(placement, 'all', newFieldRequired)
   }
 
   const applyProfileScopeToField = (
@@ -366,7 +419,11 @@ export function useDocumentBuilder(
     return { ...rest, profileTypes: scope }
   }
 
-  const updateFieldsProfileScope = (fieldId: string, scope: ProfileScopeSelection) => {
+  const updateFieldsProfileScope = (
+    fieldId: string,
+    scope: ProfileScopeSelection,
+    required: boolean,
+  ) => {
     const field = document.fields.find((item) => item.id === fieldId)
     if (!field) return
 
@@ -381,15 +438,16 @@ export function useDocumentBuilder(
         return item
       }
 
-      return applyProfileScopeToField(item, scope)
+      return { ...applyProfileScopeToField(item, scope), required }
     })
 
     saveBuilderState(recipients, nextFields)
   }
 
-  const confirmProfileScope = (scope: ProfileScopeSelection) => {
+  const confirmProfileScope = (scope: ProfileScopeSelection, required: boolean) => {
+    setNewFieldRequired(required)
     if (editingFieldProfileId) {
-      updateFieldsProfileScope(editingFieldProfileId, scope)
+      updateFieldsProfileScope(editingFieldProfileId, scope, required)
       setEditingFieldProfileId(null)
       return
     }
@@ -397,7 +455,7 @@ export function useDocumentBuilder(
     if (!pendingFieldPlacement) return
 
     setDefaultProfileScope(scope)
-    createFieldAt(pendingFieldPlacement, scope)
+    createFieldAt(pendingFieldPlacement, scope, required)
     setPendingFieldPlacement(null)
   }
 
@@ -416,6 +474,7 @@ export function useDocumentBuilder(
         mode: 'place' as const,
         fieldLabel: pendingFieldPlacement.fieldLabel,
         initialScope: defaultProfileScope,
+        initialRequired: newFieldRequired,
       }
     }
 
@@ -428,6 +487,7 @@ export function useDocumentBuilder(
         mode: 'edit' as const,
         fieldLabel: field.label,
         initialScope: getFieldProfileScope(field),
+        initialRequired: field.required !== false,
       }
     }
 
@@ -481,10 +541,15 @@ export function useDocumentBuilder(
     saveBuilderState(recipients, nextFields)
   }
 
+  const fieldsNow = () =>
+    layoutReadyRef.current ? latestFieldsRef.current : document.fields
+  const recipientsNow = () =>
+    layoutReadyRef.current ? latestRecipientsRef.current : recipients
+
   const removeField = (fieldId: string) => {
     saveBuilderState(
-      recipients,
-      document.fields.filter((field) => field.id !== fieldId),
+      recipientsNow(),
+      fieldsNow().filter((field) => field.id !== fieldId),
     )
   }
 
@@ -507,7 +572,9 @@ export function useDocumentBuilder(
       source.type === 'radio'
         ? getRadioGroupFields(fields, groupId!)
         : getCheckboxColumnFields(fields, source)
-    const { width, height } = getDefaultFieldSize(source.type)
+    const fallbackSize = getDefaultFieldSize(source.type)
+    const width = source.width > 0 ? source.width : fallbackSize.width
+    const height = source.height > 0 ? source.height : fallbackSize.height
     const bottom = siblings.reduce((max, field) => Math.max(max, field.y + field.height), source.y)
     const gap = 0.5
     const newY = Math.min(bottom + gap, 100 - height)
@@ -557,8 +624,19 @@ export function useDocumentBuilder(
 
   const setSelectedRecipientRole = (role: 'buyer' | 'seller') => {
     setSelectedAssignRole(role)
-    const recipient = recipients.find((item) => item.role === role)
+    const matches = recipients.filter((item) => item.role === role)
+    const current = matches.find((item) => item.email === selectedRecipientEmail)
+    const recipient = current ?? matches[0]
     if (recipient) setSelectedRecipientEmail(recipient.email)
+  }
+
+  const setSelectedSponsorEmail = (email: string) => {
+    const sponsor = recipients.find(
+      (item) => item.role === 'seller' && item.email === email,
+    )
+    if (!sponsor) return
+    setSelectedAssignRole('seller')
+    setSelectedRecipientEmail(sponsor.email)
   }
 
   return {
@@ -570,6 +648,9 @@ export function useDocumentBuilder(
     setFieldRequired,
     activeRecipientId,
     activeAssignRole: selectedAssignRole,
+    sponsorRecipients: recipients.filter((recipient) => recipient.role === 'seller'),
+    selectedSponsorEmail: selectedRecipientEmail,
+    setSelectedSponsorEmail,
     isProfileTypeEnabled,
     canUseProfilePreview,
     previewProfileMode,
@@ -602,6 +683,7 @@ export function useDocumentBuilder(
     moveField,
     resizeField,
     removeField,
+    flushPendingSave,
     addChoiceOption,
     updateFieldLabel,
     getRecipientColor,

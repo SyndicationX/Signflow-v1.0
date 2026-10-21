@@ -144,9 +144,10 @@ export function SigningFieldOverlay({
           }}
           aria-label={completedLabel}
         >
-          <span className="signing-field-radio-option" aria-hidden>
+          <span className="signing-field-radio-option">
             <input type="radio" checked={isSelected} readOnly tabIndex={-1} />
             <span className={`signing-radio-dot${isSelected ? ' signing-radio-dot--on' : ''}`} />
+            <span className="signing-radio-label">{field.label}</span>
           </span>
         </div>
       )

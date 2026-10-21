@@ -4,7 +4,13 @@ type SigningFieldRow = {
   id: string;
   type: string;
   recipient_id: string;
+  label?: string | null;
 };
+
+/** Spouse signature is a separate mark and must not inherit the investor signature. */
+function isSpouseSignatureField(field: SigningFieldRow): boolean {
+  return field.type === 'signature' && /\bspouse\b/i.test(String(field.label ?? ''));
+}
 
 export function replicateRecipientSignatureFieldValues(
   recipientFields: SigningFieldRow[],
@@ -15,7 +21,9 @@ export function replicateRecipientSignatureFieldValues(
   for (const fieldType of SIGNING_FIELD_TYPES) {
     const sourceField = recipientFields.find(
       (field) =>
-        field.type === fieldType && String(merged[field.id] ?? '').trim(),
+        field.type === fieldType &&
+        !isSpouseSignatureField(field) &&
+        String(merged[field.id] ?? '').trim(),
     );
     if (!sourceField) continue;
 
@@ -23,6 +31,7 @@ export function replicateRecipientSignatureFieldValues(
     for (const field of recipientFields) {
       if (field.type !== fieldType) continue;
       if (field.id === sourceField.id) continue;
+      if (isSpouseSignatureField(field)) continue;
       if (String(merged[field.id] ?? '').trim()) continue;
       merged[field.id] = sourceValue;
     }

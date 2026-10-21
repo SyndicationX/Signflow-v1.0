@@ -29,6 +29,8 @@ interface FieldTypePanelProps {
   onAddChoiceOption: (fieldId: string) => void
   onUpdateFieldLabel: (fieldId: string, label: string) => void
   onEditFieldProfileScope: (fieldId: string) => void
+  isFieldVisible?: (field: DocumentField) => boolean
+  partyLabel?: string
 }
 
 export function FieldTypePanel({
@@ -50,7 +52,10 @@ export function FieldTypePanel({
   onAddChoiceOption,
   onUpdateFieldLabel,
   onEditFieldProfileScope,
+  isFieldVisible,
+  partyLabel,
 }: FieldTypePanelProps) {
+  const visibleFields = isFieldVisible ? fields.filter(isFieldVisible) : fields
   return (
     <aside className="field-panel">
       <div className="field-panel-section-header">
@@ -155,10 +160,14 @@ export function FieldTypePanel({
 
       <h3 className="field-panel-section-title">Placed Fields</h3>
       <ul className="placed-fields">
-        {fields.length === 0 ? (
-          <li className="empty-hint">Click the document to place fields</li>
+        {visibleFields.length === 0 ? (
+          <li className="empty-hint">
+            {fields.length === 0
+              ? 'Click the document to place fields'
+              : `No ${partyLabel ?? 'matching'} fields on this document`}
+          </li>
         ) : (
-          fields.map((field) => {
+          visibleFields.map((field) => {
             const groupId = getRadioGroupId(field, fields)
             const groupSize =
               field.type === 'radio' && groupId

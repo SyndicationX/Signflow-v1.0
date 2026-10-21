@@ -9,13 +9,13 @@ import { saveSigningCompletion, clearPdfDocumentCache, getSigningDocumentFileUrl
 import {
   areRequiredFieldsComplete,
   buildRadioGroupSelectionUpdates,
-  collapseRadioGroupsForValidation,
   getRadioGroupId,
   restoreSavedRadioValues,
 } from '../utils/radioField'
 import { formatDisplayDate } from '../utils/date'
 import { fieldAppliesToProfile } from '../utils/profileField'
 import {
+  isSpouseSignatureField,
   replicateRecipientSigningFieldValues,
   replicateRecipientSigningSignedAt,
 } from '../utils/replicateSigningFieldValues'
@@ -122,10 +122,7 @@ export function SigningEngine({
     ...previouslySignedFields.map((field) => field.id),
     ...investorFields.map((field) => field.id),
   ])
-  const requiredFields = collapseRadioGroupsForValidation(recipientFields.filter((f) => f.required))
-  const navigationFields = collapseRadioGroupsForValidation(
-    navigationFieldsForSigner(recipient?.role, recipientFields),
-  )
+  const navigationFields = navigationFieldsForSigner(recipient?.role, recipientFields)
   const progress = getProgress(recipientFields)
   const [fieldNavigationRequest, setFieldNavigationRequest] = useState(0)
   const [visiblePage, setVisiblePage] = useState(() =>
@@ -287,24 +284,8 @@ export function SigningEngine({
 
   const handleFieldActivate = (fieldId: string) => {
     const navigationIndex = navigationFields.findIndex((field) => field.id === fieldId)
-    if (recipient?.role === 'seller' && navigationIndex >= 0) {
+    if (navigationIndex >= 0) {
       setCurrentFieldIndex(navigationIndex)
-      return
-    }
-
-    let index = requiredFields.findIndex((field) => field.id === fieldId)
-    if (index < 0) {
-      const field = document.fields.find((item) => item.id === fieldId)
-      if (field?.type === 'radio') {
-        const groupId = getRadioGroupId(field, document.fields)
-        index = requiredFields.findIndex((item) => {
-          if (item.type !== 'radio') return false
-          return getRadioGroupId(item, document.fields) === groupId
-        })
-      }
-    }
-    if (index >= 0) {
-      setCurrentFieldIndex(index)
     }
   }
 
@@ -412,6 +393,7 @@ export function SigningEngine({
     const primarySignatureField = recipientFields.find(
       (field) =>
         (field.type === 'signature' || field.type === 'initial') &&
+        !isSpouseSignatureField(field) &&
         String(mergedFieldValues[field.id] ?? '').trim(),
     )
     if (primarySignatureField) {

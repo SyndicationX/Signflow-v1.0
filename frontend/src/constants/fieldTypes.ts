@@ -155,7 +155,7 @@ export function getDefaultFieldSize(type: FieldType): { width: number; height: n
     case 'checkbox':
       return { width: 4, height: 3 }
     case 'radio':
-      return { width: 4, height: 3 }
+      return { width: 16, height: 3 }
     case 'number':
       return { width: 16, height: 3.5 }
     default:

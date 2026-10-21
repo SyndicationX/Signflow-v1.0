@@ -176,15 +176,14 @@ async function drawFieldValue(
   if (field.type === 'radio') {
     if (text !== 'selected') return;
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontSize = Math.max(9, Math.min(rect.height * 0.62, 13));
-    page.drawText(`(x) ${field.label}`, {
+    const fontSize = Math.max(9, Math.min(rect.height * 0.72, 12));
+    const label = field.label?.trim() ? `(x) ${field.label.trim()}` : '(x)';
+    page.drawText(label, {
       x: rect.x + FIELD_PAD_X,
       y: rect.y + Math.max(0, (rect.height - fontSize) / 2),
       size: fontSize,
       font,
       color: rgb(0.12, 0.16, 0.23),
-      maxWidth: Math.max(rect.width - FIELD_PAD_X * 2, 1),
-      lineHeight: fontSize * 1.15,
     });
     return;
   }

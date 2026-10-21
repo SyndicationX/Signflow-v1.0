@@ -35,7 +35,7 @@ export const useSigningStore = create<SigningState>((set, get) => ({
   mode: 'public',
   fieldValues: {},
   fieldSignedAt: {},
-  currentFieldIndex: 0,
+  currentFieldIndex: -1,
   isSignatureModalOpen: false,
   activeSignatureFieldId: null,
 
@@ -57,7 +57,7 @@ export const useSigningStore = create<SigningState>((set, get) => ({
     set({
       fieldValues: {},
       fieldSignedAt: {},
-      currentFieldIndex: 0,
+      currentFieldIndex: -1,
       isSignatureModalOpen: false,
       activeSignatureFieldId: null,
     }),

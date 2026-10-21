@@ -13,25 +13,29 @@ interface ProfileScopeModalProps {
   open: boolean
   fieldLabel: string
   initialScope?: ProfileScopeSelection
+  initialRequired?: boolean
   mode?: 'place' | 'edit'
   onClose: () => void
-  onConfirm: (scope: ProfileScopeSelection) => void
+  onConfirm: (scope: ProfileScopeSelection, required: boolean) => void
 }
 
 export function ProfileScopeModal({
   open,
   fieldLabel,
   initialScope = 'all',
+  initialRequired = true,
   mode = 'place',
   onClose,
   onConfirm,
 }: ProfileScopeModalProps) {
   const [applyToAll, setApplyToAll] = useState(true)
   const [selectedTypes, setSelectedTypes] = useState<ProfileType[]>([])
+  const [required, setRequired] = useState(true)
 
   useEffect(() => {
     if (!open) return
 
+    setRequired(initialRequired)
     if (initialScope === 'all') {
       setApplyToAll(true)
       setSelectedTypes([])
@@ -40,7 +44,8 @@ export function ProfileScopeModal({
 
     setApplyToAll(false)
     setSelectedTypes(initialScope)
-  }, [open, initialScope])
+    setRequired(initialRequired)
+  }, [open, initialRequired, initialScope])
 
   const toggleProfileType = (profileType: ProfileType) => {
     setSelectedTypes((current) =>
@@ -52,7 +57,7 @@ export function ProfileScopeModal({
 
   const handleConfirm = () => {
     if (applyToAll) {
-      onConfirm('all')
+      onConfirm('all', required)
       return
     }
 
@@ -60,7 +65,7 @@ export function ProfileScopeModal({
       return
     }
 
-    onConfirm(selectedTypes)
+    onConfirm(selectedTypes, required)
   }
 
   const canConfirm = applyToAll || selectedTypes.length > 0
@@ -91,6 +96,39 @@ export function ProfileScopeModal({
             {mode === 'edit' ? 'Editing field' : 'Placing field'}
           </span>
           <span className="profile-scope-field-name">{fieldLabel}</span>
+        </div>
+
+        <div className="profile-scope-required">
+          <span className="profile-scope-field-kicker">This field is</span>
+          <div
+            className="profile-scope-mode"
+            role="radiogroup"
+            aria-label="Field requirement"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={required}
+              className={`profile-scope-mode-btn ${required ? 'profile-scope-mode-btn--active' : ''}`}
+              onClick={() => setRequired(true)}
+            >
+              Required
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!required}
+              className={`profile-scope-mode-btn ${!required ? 'profile-scope-mode-btn--active' : ''}`}
+              onClick={() => setRequired(false)}
+            >
+              Optional
+            </button>
+          </div>
+          <p className="profile-scope-required-hint">
+            {required
+              ? 'The signer must complete this field before they can finish.'
+              : 'The signer can leave this field blank.'}
+          </p>
         </div>
 
         <p className="profile-scope-intro">

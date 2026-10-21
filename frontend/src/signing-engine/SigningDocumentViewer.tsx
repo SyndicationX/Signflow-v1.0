@@ -295,7 +295,19 @@ export function SigningDocumentViewer({
     if (!target) return
 
     appliedFieldFocusRef.current = fieldNavigationRequest
-    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    const scroller = target.closest('.signing-embed-body')
+    if (scroller instanceof HTMLElement) {
+      const targetRect = target.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const top =
+        scroller.scrollTop +
+        (targetRect.top - scrollerRect.top) -
+        scroller.clientHeight / 2 +
+        targetRect.height / 2
+      scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    } else {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    }
     const focusable = target.matches('button, input, textarea, select')
       ? target
       : target.querySelector<HTMLElement>('input, textarea, select, button')
@@ -336,21 +348,31 @@ export function SigningDocumentViewer({
     const pageElement = pageRefs.current.get(activeField.page)
     if (!pageElement) return
 
-    scrolledToFieldIdRef.current = activeFieldId
-
-    // Clicking a checkbox or radio on the page already in view should not jump the document.
-    if (activeField.type === 'checkbox' || activeField.type === 'radio') {
-      const scrollRoot =
-        viewerRef.current?.closest('.signing-embed-body') ??
-        viewerRef.current?.parentElement
-      const rootRect = (scrollRoot ?? document.documentElement).getBoundingClientRect()
-      const pageRect = pageElement.getBoundingClientRect()
-      const pageAlreadyVisible =
-        pageRect.bottom > rootRect.top + 8 && pageRect.top < rootRect.bottom - 8
-      if (pageAlreadyVisible) return
+    const fieldSlot = pageElement.querySelector(
+      `[data-signing-field="${CSS.escape(activeField.id)}"] .signing-field`,
+    )
+    const scrollTarget = fieldSlot instanceof HTMLElement ? fieldSlot : pageElement
+    const scroller = scrollTarget.closest('.signing-embed-body')
+    if (scroller instanceof HTMLElement) {
+      const targetRect = scrollTarget.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const alreadyVisible =
+        targetRect.top >= scrollerRect.top + 8 &&
+        targetRect.bottom <= scrollerRect.bottom - 8
+      scrolledToFieldIdRef.current = activeFieldId
+      if (alreadyVisible) return
+      const top =
+        scroller.scrollTop +
+        (targetRect.top - scrollerRect.top) -
+        scroller.clientHeight / 2 +
+        targetRect.height / 2
+      scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+      return
     }
 
-    pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    scrolledToFieldIdRef.current = activeFieldId
+
+    scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activeFieldId, showAllPages, resumePage])
 
   useEffect(() => {

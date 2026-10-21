@@ -239,6 +239,26 @@ html.signflow-embed-doc:has(body.signing-portal) .signing-embed-body {
 
 
 
+.embed-builder-sponsor-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.embed-builder-sponsor-picker select {
+  max-width: 16rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 6px;
+  background: #0f172a;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
 .embed-builder-toolbar-label {
 
   font-size: 0.8125rem;

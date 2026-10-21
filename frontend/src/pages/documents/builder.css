@@ -721,6 +721,19 @@
   text-align: center;
 }
 
+.profile-scope-required {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-scope-required-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
 .profile-scope-error {
   margin: 0;
   padding: 0.65rem 0.85rem;
