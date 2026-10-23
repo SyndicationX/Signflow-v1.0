@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '../components/ui/Button'
+import { PageNumberField } from '../components/documents/PageNumberField'
 import { loadPdfDocumentCached, clearPdfDocumentCache, resolveSigningDocumentFileUrl } from '../utils/pdf'
 import type { DocumentField } from '../types'
 import { SigningFieldOverlay } from './SigningFieldOverlay'
@@ -544,9 +545,11 @@ export function SigningDocumentViewer({
             >
               Previous
             </Button>
-            <span className="signing-page-nav-label">
-              Page {currentPage} of {pdfPageCount}
-            </span>
+            <PageNumberField
+              page={currentPage}
+              totalPages={pdfPageCount}
+              onPageChange={scrollToPage}
+            />
             <Button
               type="button"
               size="sm"
@@ -589,9 +592,11 @@ export function SigningDocumentViewer({
           >
             Previous
           </Button>
-          <span>
-            Page {currentPage} of {totalPages}
-          </span>
+          <PageNumberField
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
           <Button
             type="button"
             size="sm"

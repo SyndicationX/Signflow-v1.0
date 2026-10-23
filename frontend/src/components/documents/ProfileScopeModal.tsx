@@ -126,15 +126,15 @@ export function ProfileScopeModal({
           </div>
           <p className="profile-scope-required-hint">
             {required
-              ? 'The signer must complete this field before they can finish.'
+              ? 'The signer must complete this field before finishing.'
               : 'The signer can leave this field blank.'}
           </p>
         </div>
 
         <p className="profile-scope-intro">
           {mode === 'edit'
-            ? 'Update which investor profile types should see this field on the document.'
-            : 'Choose which investor profile types should see this field on the document.'}
+            ? 'Update which investor profile types should see this field.'
+            : 'Choose which investor profile types should see this field.'}
         </p>
 
         <div

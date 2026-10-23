@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { setEmbedApiKey } from '../../api/embedAuth'
 import { useQueryClient } from '@tanstack/react-query'
@@ -15,6 +15,11 @@ export function EmbedSignPage() {
   const { token } = useParams<{ token: string }>()
   const [searchParams] = useSearchParams()
   const apiKey = searchParams.get('apiKey')?.trim() ?? ''
+  const assignedRecipientId = searchParams.get('assignedRecipientId')?.trim() ?? ''
+  const extraRecipientIds = useMemo(
+    () => (assignedRecipientId ? [assignedRecipientId] : []),
+    [assignedRecipientId],
+  )
   const queryClient = useQueryClient()
 
   useLayoutEffect(() => {
@@ -59,11 +64,12 @@ export function EmbedSignPage() {
         document={data.document}
         recipientId={data.recipientId}
         investorRecipientId={data.investorRecipientId}
+        extraRecipientIds={extraRecipientIds}
         mode="iframe"
         token={token}
         resumePage={data.draftPage}
         onComplete={async (fieldValues) => {
-          await api.signing.complete(token, fieldValues)
+          await api.signing.complete(token, fieldValues, assignedRecipientId)
           await queryClient.invalidateQueries({ queryKey: ['signing-session', token] })
         }}
         onEvent={(event, payload) => {

@@ -175,14 +175,12 @@ async function drawFieldValue(
 
   if (field.type === 'radio') {
     if (text !== 'selected') return;
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontSize = Math.max(9, Math.min(rect.height * 0.72, 12));
-    const label = field.label?.trim() ? `(x) ${field.label.trim()}` : '(x)';
-    page.drawText(label, {
-      x: rect.x + FIELD_PAD_X,
-      y: rect.y + Math.max(0, (rect.height - fontSize) / 2),
-      size: fontSize,
-      font,
+    const dot = Math.min(rect.width, rect.height) * 0.28;
+    page.drawEllipse({
+      x: rect.x + rect.width / 2,
+      y: rect.y + rect.height / 2,
+      xScale: dot,
+      yScale: dot,
       color: rgb(0.12, 0.16, 0.23),
     });
     return;

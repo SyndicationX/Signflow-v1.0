@@ -13,6 +13,7 @@ import {
   restoreSavedRadioValues,
 } from '../utils/radioField'
 import { formatDisplayDate } from '../utils/date'
+import { isSharedSponsorRecipient } from '../utils/investorSponsorWorkflow'
 import { fieldAppliesToProfile } from '../utils/profileField'
 import {
   isSpouseSignatureField,
@@ -40,6 +41,8 @@ interface SigningEngineProps {
   onEvent?: (event: string, data?: Record<string, unknown>) => void
   /** Page saved the last time this signer left the document. */
   resumePage?: number
+  /** Named sponsor fields to show together with an Any sponsor field. */
+  extraRecipientIds?: string[]
   branding?: {
     primaryColor?: string
     buttonColor?: string
@@ -57,6 +60,7 @@ export function SigningEngine({
   onDecline,
   onEvent,
   resumePage,
+  extraRecipientIds = [],
   branding,
 }: SigningEngineProps) {
   const navigate = useNavigate()
@@ -105,8 +109,31 @@ export function SigningEngine({
     return true
   })
 
+  const sharedSponsorRecipientIds = new Set(
+    recipient?.role === 'seller'
+      ? document.recipients
+          .filter(
+            (item) =>
+              item.id !== recipientId &&
+              item.signed !== true &&
+              item.signingStatus !== 'signed' &&
+              isSharedSponsorRecipient(item),
+          )
+          .map((item) => item.id)
+      : [],
+  )
+
+  const extraRecipientIdSet = new Set(extraRecipientIds)
   const recipientFields = document.fields.filter((field) => {
-    if (field.recipientId !== recipientId) {
+    const owner = document.recipients.find((item) => item.id === field.recipientId)
+    const ownerSigned = owner?.signed === true || owner?.signingStatus === 'signed'
+    const includeAssigned =
+      extraRecipientIdSet.has(field.recipientId) && !ownerSigned
+    if (
+      field.recipientId !== recipientId &&
+      !sharedSponsorRecipientIds.has(field.recipientId) &&
+      !includeAssigned
+    ) {
       return false
     }
 
@@ -243,7 +270,12 @@ export function SigningEngine({
     if (hasValues) {
       const ownIds = new Set(
         document.fields
-          .filter((field) => field.recipientId === recipientId)
+          .filter(
+            (field) =>
+              field.recipientId === recipientId ||
+              sharedSponsorRecipientIds.has(field.recipientId) ||
+              extraRecipientIdSet.has(field.recipientId),
+          )
           .map((field) => field.id),
       )
       for (const [fieldId, value] of Object.entries(fieldValues)) {
@@ -261,7 +293,7 @@ export function SigningEngine({
     }, 500)
 
     return () => window.clearTimeout(timer)
-  }, [fieldValues, visiblePage, token, recipientId, document.fields])
+  }, [fieldValues, visiblePage, token, recipientId, document.fields, extraRecipientIds])
 
   useEffect(() => {
     return () => {

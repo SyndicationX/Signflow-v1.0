@@ -208,12 +208,19 @@ export const api = {
         },
       ),
 
-    complete: (token: string, fieldValues?: Record<string, string>) =>
+    complete: (
+      token: string,
+      fieldValues?: Record<string, string>,
+      assignedRecipientId?: string,
+    ) =>
       apiRequest<{ success: boolean; timestamp: string }>(
         `/signing/sessions/${token}/complete`,
         {
           method: 'POST',
-          body: JSON.stringify({ fieldValues }),
+          body: JSON.stringify({
+            fieldValues,
+            ...(assignedRecipientId ? { assignedRecipientId } : {}),
+          }),
         },
       ),
 

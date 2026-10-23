@@ -42,6 +42,9 @@ export class SigningController {
       req.body.fieldValues,
       getClientIp(req),
       buildSigningEmbedContext(req),
+      typeof req.body.assignedRecipientId === 'string'
+        ? req.body.assignedRecipientId
+        : undefined,
     );
     res.json(result);
   };

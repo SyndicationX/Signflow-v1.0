@@ -7,13 +7,16 @@ import { pdfDocumentService } from './pdf-document.service';
 import { documentFileService } from './document-file.service';
 import { AppError } from '../utils/app-error';
 import { assertOrResyncDocumentContentIntegrity } from '../utils/document-integrity';
-import { hashToken } from '../utils/crypto';
+import { generateSecureToken, hashToken } from '../utils/crypto';
 import { formatSigningDate } from '../utils/signing-timestamp';
 import { toDocument } from '../utils/mappers';
 import { webhookService } from './webhook.service';
 import type { ProfileType } from '../types/domain';
 import { applyResolvedRadioGroups } from '../utils/radio-field';
-import { isInvestorSponsorWorkflow } from '../utils/investor-sponsor-workflow';
+import {
+  isInvestorSponsorWorkflow,
+  isSharedSponsorRecipient,
+} from '../utils/investor-sponsor-workflow';
 import { assertEmbedOriginAllowed } from '../utils/sdk-domain';
 import { replicateRecipientSignatureFieldValues } from '../utils/replicate-signature-fields';
 
@@ -124,9 +127,11 @@ export class SigningService {
 
     if (fieldValues && Object.keys(fieldValues).length > 0) {
       const recipientFields = await documentRepository.findFields(session.document_id);
+      const recipients = await documentRepository.findRecipients(session.document_id);
+      const allowedRecipientIds = sellerFieldRecipientIds(recipients, session.recipient_id);
       const allowed = new Set(
         recipientFields
-          .filter((field) => field.recipient_id === session.recipient_id)
+          .filter((field) => allowedRecipientIds.has(field.recipient_id))
           .map((field) => field.id),
       );
       const scoped: Record<string, string> = {};
@@ -204,6 +209,7 @@ export class SigningService {
     fieldValues?: Record<string, string>,
     clientIp?: string,
     embed?: SigningEmbedContext,
+    assignedRecipientId?: string,
   ) {
     const tokenHash = hashToken(token);
     const session = await signingRepository.findValidByTokenHash(tokenHash);
@@ -213,10 +219,16 @@ export class SigningService {
 
     await this.assertEmbedAccessAllowed(session.document_id, embed);
 
+    const recipientsForFields = await documentRepository.findRecipients(session.document_id);
+    const allowedRecipientIds = sellerFieldRecipientIds(
+      recipientsForFields,
+      session.recipient_id,
+      assignedRecipientId,
+    );
     if (fieldValues && Object.keys(fieldValues).length > 0) {
       const recipientFields = await documentRepository.findFields(session.document_id);
-      const scopedFields = recipientFields.filter(
-        (field) => field.recipient_id === session.recipient_id,
+      const scopedFields = recipientFields.filter((field) =>
+        allowedRecipientIds.has(field.recipient_id),
       );
       const replicatedValues = replicateRecipientSignatureFieldValues(
         scopedFields,
@@ -232,6 +244,15 @@ export class SigningService {
       session.recipient_id,
       formatSigningDate(signedAt),
     );
+    await closeFilledSharedSponsorSlots({
+      documentId: session.document_id,
+      sessionRecipientId: session.recipient_id,
+      recipients: recipientsForFields,
+      fieldValues,
+      signedAt,
+      clientIp,
+      assignedRecipientId,
+    });
 
     const documentRow = await documentRepository.findById(session.document_id);
     const isSequential = documentRow?.workflow_type === 'sequential';
@@ -373,6 +394,86 @@ export class SigningService {
     }
 
     return { success: true, timestamp: new Date().toISOString() };
+  }
+}
+
+function sellerFieldRecipientIds(
+  recipients: Array<{ id: string; role?: string | null; email?: string | null; name?: string | null }>,
+  sessionRecipientId: string,
+  assignedRecipientId?: string,
+): Set<string> {
+  const ids = new Set<string>([sessionRecipientId]);
+  const current = recipients.find((recipient) => recipient.id === sessionRecipientId);
+  const role = String(current?.role ?? '').trim().toLowerCase();
+  if (role !== 'seller' && !role.includes('sponsor')) return ids;
+  for (const recipient of recipients) {
+    if (recipient.id !== sessionRecipientId && isSharedSponsorRecipient(recipient)) {
+      ids.add(recipient.id);
+    }
+  }
+  const assignedId = assignedRecipientId?.trim();
+  const assigned = assignedId
+    ? recipients.find((recipient) => recipient.id === assignedId)
+    : undefined;
+  const assignedRole = String(assigned?.role ?? '').trim().toLowerCase();
+  if (
+    assigned &&
+    (assignedRole === 'seller' || assignedRole.includes('sponsor')) &&
+    !isSharedSponsorRecipient(assigned)
+  ) {
+    ids.add(assigned.id);
+  }
+  return ids;
+}
+
+/** One signature on the shared Any sponsor slot closes it for every other sponsor. */
+async function closeFilledSharedSponsorSlots(params: {
+  documentId: string;
+  sessionRecipientId: string;
+  recipients: Array<{ id: string; role?: string | null; email?: string | null; name?: string | null }>;
+  fieldValues?: Record<string, string>;
+  signedAt: Date;
+  clientIp?: string;
+  assignedRecipientId?: string;
+}): Promise<void> {
+  const fieldValues = params.fieldValues;
+  if (!fieldValues || Object.keys(fieldValues).length === 0) return;
+
+  const assignedId = params.assignedRecipientId?.trim();
+  const fields = await documentRepository.findFields(params.documentId);
+  for (const recipient of params.recipients) {
+    if (recipient.id === params.sessionRecipientId) continue;
+    const closesSharedSlot = isSharedSponsorRecipient(recipient);
+    const closesAssignedSlot = Boolean(assignedId) && recipient.id === assignedId;
+    if (!closesSharedSlot && !closesAssignedSlot) continue;
+    const signatureFields = fields.filter((field) => {
+      if (field.recipient_id !== recipient.id) return false;
+      const type = String(field.type ?? '').trim().toLowerCase();
+      return type === 'signature' || type === 'initial' || type === 'initials';
+    });
+    if (signatureFields.length === 0) continue;
+    const filledNow = signatureFields.some((field) => Boolean(fieldValues[field.id]?.trim()));
+    if (!filledNow) continue;
+    const already = await signingRepository.hasCompletedOwnSigningSession(
+      params.documentId,
+      recipient.id,
+    );
+    if (already) continue;
+
+    const tokenHash = hashToken(generateSecureToken(24));
+    await signingRepository.create({
+      tokenHash,
+      documentId: params.documentId,
+      recipientId: recipient.id,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      sentIp: params.clientIp,
+    });
+    await signingRepository.markCompleted(tokenHash, params.clientIp);
+    await documentRepository.autofillEmptyDateFields(
+      params.documentId,
+      recipient.id,
+      formatSigningDate(params.signedAt),
+    );
   }
 }
 

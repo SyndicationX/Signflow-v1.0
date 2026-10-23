@@ -6,7 +6,6 @@ import { AppError } from '../utils/app-error';
 import { generateSecureToken, hashToken } from '../utils/crypto';
 import {
   getBuyers,
-  getSeller,
   isInvestorSponsorWorkflow,
 } from '../utils/investor-sponsor-workflow';
 import {
@@ -111,7 +110,7 @@ export const embedService = {
     let sessionType: EmbedSigningSessionType = 'own';
 
     if (isInvestorSponsorWorkflow(recipients) && recipient.role === 'seller') {
-      const seller = getSeller(recipients);
+      const seller = recipient;
       if (!seller) {
         throw new AppError('Sponsor not found on this document', 404, 'NOT_FOUND');
       }

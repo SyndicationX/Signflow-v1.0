@@ -106,6 +106,7 @@ export function DocumentBuilderPage() {
           onToggleFieldRequired={builder.setFieldRequired}
           onRemoveField={builder.removeField}
           onAddChoiceOption={builder.addChoiceOption}
+          pageCount={builder.document.pages}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
           isFieldVisible={builder.isFieldVisibleInPreview}
@@ -119,6 +120,7 @@ export function DocumentBuilderPage() {
             pages={builder.document.pages}
             selectedFieldType={builder.selectedFieldType}
             fields={builder.document.fields}
+            recipients={builder.document.recipients}
             getFieldColor={builder.getFieldColor}
             isFieldVisibleInPreview={builder.isFieldVisibleInPreview}
             onPlaceField={builder.placeField}
@@ -126,6 +128,7 @@ export function DocumentBuilderPage() {
             onResizeField={builder.resizeField}
             onRemoveField={builder.removeField}
             onAddChoiceOption={builder.addChoiceOption}
+            choicePageFocus={builder.choicePageFocus}
             onReuploadFile={(file) => uploadDocumentFile.mutateAsync(file)}
             isReuploading={uploadDocumentFile.isPending}
             canPlaceFields={builder.canPlaceFields}

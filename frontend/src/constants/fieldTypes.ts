@@ -42,11 +42,11 @@ function accentStyle(color: string): AccentStyle {
 
 export const PROFILE_TYPE_OPTIONS: { value: ProfileType; label: string }[] = [
   { value: 'individual', label: 'Individual' },
-  { value: 'custodian_ira_401k', label: 'Custodian IRA or custodian based 401(k)' },
+  { value: 'custodian_ira_401k', label: 'Custodian IRA or custodian-based 401(k)' },
   { value: 'joint_tenancy', label: 'Joint tenancy' },
   {
     value: 'llc_corp_partnership_trust_solo_checkbook_ira',
-    label: 'LLC, corp, partnership, trust, solo 401(k), or checkbook IRA',
+    label: 'LLC, corporation, partnership, trust, solo 401(k), or checkbook IRA',
   },
 ]
 
@@ -155,7 +155,7 @@ export function getDefaultFieldSize(type: FieldType): { width: number; height: n
     case 'checkbox':
       return { width: 4, height: 3 }
     case 'radio':
-      return { width: 16, height: 3 }
+      return { width: 4, height: 3 }
     case 'number':
       return { width: 16, height: 3.5 }
     default:

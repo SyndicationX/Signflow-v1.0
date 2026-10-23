@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
-import type { DocumentField } from '../../types'
+import type { DocumentField, Recipient } from '../../types'
+import { fieldPartyMark } from '../../utils/investorSponsorWorkflow'
 import { colorWithAlpha } from '../../constants/fieldTypes'
 import { Button } from '../ui/Button'
+import { PageNumberField } from './PageNumberField'
 import { getDocumentFileUrl, loadPdfDocumentCached, clearPdfDocumentCache, validatePdfFile } from '../../utils/pdf'
+import { isLastChoiceOnPage } from '../../utils/choicePlacement'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 
 const MIN_FIELD_WIDTH = 3
@@ -62,13 +65,19 @@ interface PdfCanvasProps {
   pages: number
   selectedFieldType: string
   fields: DocumentField[]
+  recipients?: Recipient[]
   getFieldColor: (field: DocumentField) => string
   isFieldVisibleInPreview?: (field: DocumentField) => boolean
   onPlaceField: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
   onMoveField: (fieldId: string, x: number, y: number) => void
   onResizeField: (fieldId: string, width: number, height: number) => void
   onRemoveField: (fieldId: string) => void
-  onAddChoiceOption?: (fieldId: string) => void
+  onAddChoiceOption?: (
+    fieldId: string,
+    options?: { pageCount?: number; placement?: 'below' | 'nextPage' },
+  ) => void
+  /** Jump here after a radio or checkbox is continued onto another page. */
+  choicePageFocus?: { page: number; seq: number } | null
   onReuploadFile?: (file: File) => Promise<unknown>
   isReuploading?: boolean
   canPlaceFields?: boolean
@@ -99,6 +108,7 @@ export function PdfCanvas({
   pages,
   selectedFieldType,
   fields,
+  recipients = [],
   getFieldColor,
   isFieldVisibleInPreview,
   onPlaceField,
@@ -106,6 +116,7 @@ export function PdfCanvas({
   onResizeField,
   onRemoveField,
   onAddChoiceOption,
+  choicePageFocus,
   onReuploadFile,
   isReuploading = false,
   canPlaceFields = true,
@@ -155,6 +166,12 @@ export function PdfCanvas({
   useEffect(() => {
     onPageChange?.(currentPage)
   }, [currentPage, onPageChange])
+
+  useEffect(() => {
+    if (!choicePageFocus) return
+    const next = Math.max(1, Math.min(totalPages, Math.floor(choicePageFocus.page)))
+    setCurrentPage((page) => (page === next ? page : next))
+  }, [choicePageFocus, totalPages])
 
   useEffect(() => {
     setPdfPageCount(null)
@@ -409,9 +426,11 @@ export function PdfCanvas({
           >
             Previous
           </Button>
-          <span>
-            Page {currentPage} of {totalPages}
-          </span>
+          <PageNumberField
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
           <Button
             type="button"
             size="sm"
@@ -479,7 +498,7 @@ export function PdfCanvas({
             >
               {canPlaceFields
                 ? selectedFieldType === 'radio'
-                  ? 'Click to place the first option. Use + on it to add choices in the same group. The signer can select only one.'
+                  ? 'Click to place the first option. + adds the next choice under it. Next page continues the same group on the following page. The signer can select only one.'
                   : 'Click to place · drag to move · corner handle to resize'
                 : placementBlockedMessage ?? 'Select a profile type with a recipient to place fields'}
             </p>
@@ -494,12 +513,16 @@ export function PdfCanvas({
             const height = isResizing ? resizeState.height : field.height
 
             const fieldColor = getFieldColor(field)
+            const party = fieldPartyMark(
+              recipients.find((recipient) => recipient.id === field.recipientId)?.role,
+            )
 
             return (
               <div
                 key={field.id}
                 className={[
                   'pdf-field',
+                  field.type === 'radio' ? 'pdf-field--radio' : '',
                   isDragging ? 'pdf-field--dragging' : '',
                   isResizing ? 'pdf-field--resizing' : '',
                 ]
@@ -515,35 +538,70 @@ export function PdfCanvas({
                   backgroundColor: colorWithAlpha(fieldColor, 0.14),
                   boxShadow: `0 1px 4px ${colorWithAlpha(fieldColor, 0.2)}`,
                 }}
+                aria-label={field.type === 'radio' ? field.label : undefined}
                 onPointerDown={(event) => handleFieldPointerDown(event, field)}
                 onClick={(event) => event.stopPropagation()}
               >
-                <span className="pdf-field-label">
-                  {field.type === 'radio' ? `○ ${field.label}` : field.label}
-                  {field.required && <span className="pdf-field-required">*</span>}
-                </span>
+                {party ? (
+                  <span
+                    className={`pdf-field-party pdf-field-party--${party}`}
+                    style={{ backgroundColor: fieldColor }}
+                    title={party === 'investor' ? 'Investor' : 'Sponsor'}
+                  >
+                    {party}
+                  </span>
+                ) : null}
+                {field.type !== 'radio' && (
+                  <span className="pdf-field-label">
+                    {field.label}
+                    {field.required && <span className="pdf-field-required">*</span>}
+                  </span>
+                )}
                 {(field.type === 'radio' || field.type === 'checkbox') &&
                   onAddChoiceOption && (
-                    <button
-                      type="button"
-                      className="pdf-field-add-option"
-                      aria-label={
-                        field.type === 'radio' ? 'Add radio option' : 'Add checkbox'
-                      }
-                      title={
-                        field.type === 'radio'
-                          ? 'Add a choice in this group. The signer can select only one.'
-                          : 'Add checkbox'
-                      }
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        skipNextClickRef.current = true
-                        onAddChoiceOption(field.id)
-                      }}
-                    >
-                      +
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="pdf-field-add-option"
+                        aria-label={
+                          field.type === 'radio'
+                            ? 'Add radio option below'
+                            : 'Add checkbox below'
+                        }
+                        title="Add another in this group, under this one"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          skipNextClickRef.current = true
+                          onAddChoiceOption(field.id, {
+                            pageCount: totalPages,
+                            placement: 'below',
+                          })
+                        }}
+                      >
+                        +
+                      </button>
+                      {field.page < totalPages &&
+                        isLastChoiceOnPage(field, fields) && (
+                          <button
+                            type="button"
+                            className="pdf-field-next-page"
+                            aria-label={`Add this group on page ${field.page + 1}`}
+                            title={`Add another in this group on page ${field.page + 1}`}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              skipNextClickRef.current = true
+                              onAddChoiceOption(field.id, {
+                                pageCount: totalPages,
+                                placement: 'nextPage',
+                              })
+                            }}
+                          >
+                            Next page
+                          </button>
+                        )}
+                    </>
                   )}
                 <button
                   type="button"

@@ -514,6 +514,24 @@ html.signflow-embed-doc:has(body.signing-portal) .signing-embed-body {
 
 }
 
+.embed-builder-layout .field-types-heading {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.embed-builder-layout .field-types-heading .field-panel-section-title {
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: 16px;
+  margin: 0;
+  line-height: 16px;
+}
+
 .embed-builder-layout .field-panel-section-header {
   margin-bottom: 0.5rem;
 }

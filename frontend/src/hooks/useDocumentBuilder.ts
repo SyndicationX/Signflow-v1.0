@@ -8,8 +8,9 @@ import {
   getRadioGroupId,
 } from '../utils/radioField'
 import { getCheckboxColumnFields, getNextCheckboxOptionLabel } from '../utils/checkboxField'
+import { placeNextChoiceOption, type ChoiceAddPlacement } from '../utils/choicePlacement'
 import { fieldAppliesToProfile, getFieldProfileScope, getFieldProfileTypes } from '../utils/profileField'
-import { isInvestorSponsorWorkflow } from '../utils/investorSponsorWorkflow'
+import { fieldPartyMark, isInvestorSponsorWorkflow } from '../utils/investorSponsorWorkflow'
 import { canSaveEmbedTemplate } from '../utils/embedTemplate'
 import { EMBED_DEFAULT_RECIPIENTS } from '../constants/embedDefaults'
 import { useUpdateDocument } from './useDocumentMutations'
@@ -70,8 +71,17 @@ export function useDocumentBuilder(
   const [defaultProfileScope, setDefaultProfileScope] = useState<ProfileScopeSelection>('all')
   const [previewProfileMode, setPreviewProfileMode] = useState(false)
   const [pendingFieldPlacement, setPendingFieldPlacement] = useState<PendingFieldPlacement | null>(null)
+  const [pendingCheckboxAdd, setPendingCheckboxAdd] = useState<{
+    fieldId: string
+    placement: ChoiceAddPlacement
+    pageCount: number
+  } | null>(null)
   const [editingFieldProfileId, setEditingFieldProfileId] = useState<string | null>(null)
   const [recipientModal, setRecipientModal] = useState<RecipientModalState>(null)
+  const [choicePageFocus, setChoicePageFocus] = useState<{ page: number; seq: number } | null>(
+    null,
+  )
+  const choicePageSeqRef = useRef(0)
   const hasPromptedFirstRecipient = useRef(false)
   const isSeedingEmbedRecipients = useRef(false)
   const previewProfileTouched = useRef(false)
@@ -116,6 +126,19 @@ export function useDocumentBuilder(
     let cancelled = false
     void saveQueueRef.current.then(() => {
       if (cancelled || revisionRef.current !== 0) return
+      const radioSize = getDefaultFieldSize('radio')
+      const restored = fields.map((field) => {
+        if (field.type !== 'radio' || field.width < 8) return field
+        return { ...field, width: radioSize.width, height: radioSize.height }
+      })
+      const radiosRestored = restored.some(
+        (field, index) =>
+          field.width !== fields[index]?.width || field.height !== fields[index]?.height,
+      )
+      if (radiosRestored) {
+        persistLayout(recipients, restored)
+        return
+      }
       latestFieldsRef.current = fields
       latestRecipientsRef.current = recipients
       layoutReadyRef.current = true
@@ -211,6 +234,10 @@ export function useDocumentBuilder(
     : getRecipientRoleColor(selectedAssignRole)
 
   const getFieldColor = (field: DocumentField) => {
+    const recipient = recipients.find((r) => r.id === field.recipientId)
+    const party = fieldPartyMark(recipient?.role)
+    if (party === 'investor') return '#dc2626'
+    if (party === 'sponsor') return '#2563eb'
     const types = getFieldProfileTypes(field)
     if (types?.length === 1) {
       return getProfileTypeStyle(types[0]).color
@@ -218,7 +245,6 @@ export function useDocumentBuilder(
     if (!types?.length) {
       return '#64748b'
     }
-    const recipient = recipients.find((r) => r.id === field.recipientId)
     if (recipient?.color) return recipient.color
     return recipient ? getRecipientRoleStyle(recipient.role).color : '#64748b'
   }
@@ -446,6 +472,11 @@ export function useDocumentBuilder(
 
   const confirmProfileScope = (scope: ProfileScopeSelection, required: boolean) => {
     setNewFieldRequired(required)
+    if (pendingCheckboxAdd) {
+      appendCheckboxFromPlus(pendingCheckboxAdd, scope, required)
+      setPendingCheckboxAdd(null)
+      return
+    }
     if (editingFieldProfileId) {
       updateFieldsProfileScope(editingFieldProfileId, scope, required)
       setEditingFieldProfileId(null)
@@ -461,6 +492,7 @@ export function useDocumentBuilder(
 
   const cancelProfileScope = () => {
     setPendingFieldPlacement(null)
+    setPendingCheckboxAdd(null)
     setEditingFieldProfileId(null)
   }
 
@@ -469,6 +501,16 @@ export function useDocumentBuilder(
   }
 
   const getProfileScopeModalState = () => {
+    if (pendingCheckboxAdd) {
+      const field = document.fields.find((item) => item.id === pendingCheckboxAdd.fieldId)
+      return {
+        mode: 'place' as const,
+        fieldLabel: 'Checkbox',
+        initialScope: field ? getFieldProfileScope(field) : 'all',
+        initialRequired: field ? field.required !== false : true,
+      }
+    }
+
     if (pendingFieldPlacement) {
       return {
         mode: 'place' as const,
@@ -553,13 +595,77 @@ export function useDocumentBuilder(
     )
   }
 
-  /** Stack another radio option or checkbox directly beneath the one clicked. */
-  const addChoiceOption = (fieldId: string) => {
-    const source = document.fields.find((field) => field.id === fieldId)
-    if (!source) return
-    if (source.type !== 'radio' && source.type !== 'checkbox') return
+  const appendCheckboxFromPlus = (
+    pending: { fieldId: string; placement: ChoiceAddPlacement; pageCount: number },
+    scope: ProfileScopeSelection,
+    required: boolean,
+  ) => {
+    let fields = fieldsNow()
+    const source = fields.find((field) => field.id === pending.fieldId)
+    if (!source || source.type !== 'checkbox') return
 
-    let fields = document.fields
+    let groupId = source.radioGroupId?.trim()
+    if (!groupId) {
+      groupId = `cg_${source.id}`
+      fields = fields.map((field) =>
+        field.id === source.id ? { ...field, radioGroupId: groupId } : field,
+      )
+    }
+
+    const groupedSource = fields.find((field) => field.id === source.id) ?? source
+    const siblings = getCheckboxColumnFields(fields, groupedSource)
+    const fallbackSize = getDefaultFieldSize('checkbox')
+    const width = source.width > 0 ? source.width : fallbackSize.width
+    const height = source.height > 0 ? source.height : fallbackSize.height
+    const slot = placeNextChoiceOption({
+      siblings,
+      source: groupedSource,
+      width,
+      height,
+      pageCount: pending.pageCount,
+      placement: pending.placement,
+    })
+    const profileTypes = scope === 'all' ? undefined : scope
+    const newField: DocumentField = {
+      id: `f_${Date.now()}`,
+      type: 'checkbox',
+      label: getNextCheckboxOptionLabel(siblings),
+      x: slot.x,
+      y: slot.y,
+      width,
+      height,
+      page: slot.page,
+      recipientId: source.recipientId,
+      required,
+      ...(profileTypes ? { profileTypes } : {}),
+      radioGroupId: groupId,
+    }
+
+    choicePageSeqRef.current += 1
+    setChoicePageFocus({ page: slot.page, seq: choicePageSeqRef.current })
+    saveBuilderState(recipientsNow(), [...fields, newField])
+  }
+
+  /** Add another radio option or checkbox in the same group, on this page or the next one. */
+  const addChoiceOption = (
+    fieldId: string,
+    options?: { pageCount?: number; placement?: ChoiceAddPlacement },
+  ) => {
+    let fields = fieldsNow()
+    const source = fields.find((field) => field.id === fieldId)
+    if (!source) return
+    if (source.type === 'checkbox') {
+      setPendingFieldPlacement(null)
+      setEditingFieldProfileId(null)
+      setPendingCheckboxAdd({
+        fieldId,
+        placement: options?.placement ?? 'below',
+        pageCount: Math.max(1, options?.pageCount ?? document?.pages ?? 1),
+      })
+      return
+    }
+    if (source.type !== 'radio') return
+
     let groupId = source.radioGroupId?.trim()
     if (!groupId) {
       groupId = source.type === 'radio' ? `rg_${source.id}` : `cg_${source.id}`
@@ -568,16 +674,22 @@ export function useDocumentBuilder(
       )
     }
 
+    const groupedSource = fields.find((field) => field.id === source.id) ?? source
     const siblings =
       source.type === 'radio'
         ? getRadioGroupFields(fields, groupId!)
-        : getCheckboxColumnFields(fields, source)
+        : getCheckboxColumnFields(fields, groupedSource)
     const fallbackSize = getDefaultFieldSize(source.type)
     const width = source.width > 0 ? source.width : fallbackSize.width
     const height = source.height > 0 ? source.height : fallbackSize.height
-    const bottom = siblings.reduce((max, field) => Math.max(max, field.y + field.height), source.y)
-    const gap = 0.5
-    const newY = Math.min(bottom + gap, 100 - height)
+    const slot = placeNextChoiceOption({
+      siblings,
+      source: groupedSource,
+      width,
+      height,
+      pageCount: Math.max(1, options?.pageCount ?? document?.pages ?? 1),
+      placement: options?.placement ?? 'below',
+    })
 
     const newField: DocumentField = {
       id: `f_${Date.now()}`,
@@ -586,11 +698,11 @@ export function useDocumentBuilder(
         source.type === 'radio'
           ? getNextRadioOptionLabel(fields, groupId!)
           : getNextCheckboxOptionLabel(siblings),
-      x: source.x,
-      y: newY,
+      x: slot.x,
+      y: slot.y,
       width,
       height,
-      page: source.page,
+      page: slot.page,
       recipientId: source.recipientId,
       required: source.required,
       profileTypes: source.profileTypes,
@@ -598,7 +710,9 @@ export function useDocumentBuilder(
       ...(groupId ? { radioGroupId: groupId } : {}),
     }
 
-    saveBuilderState(recipients, [...fields, newField])
+    choicePageSeqRef.current += 1
+    setChoicePageFocus({ page: slot.page, seq: choicePageSeqRef.current })
+    saveBuilderState(recipientsNow(), [...fields, newField])
   }
 
   const removeRecipient = (recipientId: string) => {
@@ -685,6 +799,7 @@ export function useDocumentBuilder(
     removeField,
     flushPendingSave,
     addChoiceOption,
+    choicePageFocus,
     updateFieldLabel,
     getRecipientColor,
     getFieldColor,

@@ -173,6 +173,7 @@ export function EmbedDocumentBuilder() {
               pages={document.pages}
               selectedFieldType={builder.selectedFieldType}
               fields={builder.document.fields}
+              recipients={builder.document.recipients}
               getFieldColor={builder.getFieldColor}
               isFieldVisibleInPreview={builder.isFieldVisibleInPreview}
               onPlaceField={builder.placeField}
@@ -180,6 +181,7 @@ export function EmbedDocumentBuilder() {
               onResizeField={builder.resizeField}
               onRemoveField={builder.removeField}
               onAddChoiceOption={builder.addChoiceOption}
+              choicePageFocus={builder.choicePageFocus}
               onReuploadFile={(file) => uploadDocumentFile.mutateAsync(file)}
               isReuploading={uploadDocumentFile.isPending}
               canPlaceFields={builder.canPlaceFields}
@@ -209,6 +211,7 @@ export function EmbedDocumentBuilder() {
           onToggleFieldRequired={builder.setFieldRequired}
           onRemoveField={builder.removeField}
           onAddChoiceOption={builder.addChoiceOption}
+          pageCount={Math.max(document.pages, currentPage)}
           onUpdateFieldLabel={builder.updateFieldLabel}
           onEditFieldProfileScope={builder.openEditFieldProfileScope}
           isFieldVisible={builder.isFieldVisibleInPreview}

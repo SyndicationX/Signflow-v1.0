@@ -1,4 +1,6 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Info, Pencil, Trash2 } from 'lucide-react'
 import {
   FIELD_TYPES,
   PROFILE_TYPE_OPTIONS,
@@ -7,8 +9,51 @@ import {
 } from '../../constants/fieldTypes'
 import { getRadioGroupFields, getRadioGroupId } from '../../utils/radioField'
 import { formatFieldProfileScope } from '../../utils/profileField'
+import { namedSponsorLabel } from '../../utils/investorSponsorWorkflow'
 import { IconButton } from '../ui/IconButton'
 import type { DocumentField, FieldType, ProfileType, Recipient } from '../../types'
+
+const FIELD_TYPES_INFO = 'Fields will have to be filled manually.'
+
+function FieldTypesInfo() {
+  const [tip, setTip] = useState<{ top: number; left: number } | null>(null)
+
+  const showTip = (target: HTMLButtonElement) => {
+    const rect = target.getBoundingClientRect()
+    const width = 220
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 72)
+    setTip({ top, left })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="field-types-info"
+        aria-label={FIELD_TYPES_INFO}
+        onMouseEnter={(event) => showTip(event.currentTarget)}
+        onMouseLeave={() => setTip(null)}
+        onFocus={(event) => showTip(event.currentTarget)}
+        onBlur={() => setTip(null)}
+      >
+        <Info size={15} strokeWidth={2} aria-hidden />
+      </button>
+      {tip
+        ? createPortal(
+            <div
+              className="field-types-tip"
+              role="tooltip"
+              style={{ top: tip.top, left: tip.left }}
+            >
+              {FIELD_TYPES_INFO}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  )
+}
 
 interface FieldTypePanelProps {
   activeProfileType: ProfileType
@@ -26,7 +71,11 @@ interface FieldTypePanelProps {
   onNewFieldRequiredChange: (required: boolean) => void
   onToggleFieldRequired: (fieldId: string, required: boolean) => void
   onRemoveField: (fieldId: string) => void
-  onAddChoiceOption: (fieldId: string) => void
+  onAddChoiceOption: (
+    fieldId: string,
+    options?: { pageCount?: number; placement?: 'below' | 'nextPage' },
+  ) => void
+  pageCount?: number
   onUpdateFieldLabel: (fieldId: string, label: string) => void
   onEditFieldProfileScope: (fieldId: string) => void
   isFieldVisible?: (field: DocumentField) => boolean
@@ -50,6 +99,7 @@ export function FieldTypePanel({
   onToggleFieldRequired,
   onRemoveField,
   onAddChoiceOption,
+  pageCount = 1,
   onUpdateFieldLabel,
   onEditFieldProfileScope,
   isFieldVisible,
@@ -116,7 +166,10 @@ export function FieldTypePanel({
         </p>
       )}
 
-      <h3 className="field-panel-section-title">Field Types</h3>
+      <div className="field-types-heading">
+        <h3 className="field-panel-section-title">Field Types</h3>
+        <FieldTypesInfo />
+      </div>
       <div className="field-type-grid">
         {FIELD_TYPES.map((fieldType) => (
           <button
@@ -142,13 +195,13 @@ export function FieldTypePanel({
 
       {selectedFieldType === 'radio' && (
         <p className="field-type-hint">
-          Click the document to place the first option. Click + on that option to add more choices in the same group. The signer can select only one of those choices. Clicking the document again starts a separate group, and that group is independent.
+          Click the document to place the first option. Add below puts the next choice on this page. Add on page … continues the same group on the next page. The signer can select only one. Clicking the document again starts a separate group.
         </p>
       )}
 
       {selectedFieldType === 'checkbox' && (
         <p className="field-type-hint">
-          Place the first checkbox, then click + on it to stack another beneath. Clients can tick any number of them.
+          Place the first checkbox. The plus button asks if the next one is required and which profile types see it. Clients can tick any number of them.
         </p>
       )}
 
@@ -176,6 +229,8 @@ export function FieldTypePanel({
             const fieldColor = getFieldColor(field)
             const recipient = recipients.find((item) => item.id === field.recipientId)
             const showProfileScope = recipient?.role === 'buyer' && field.type !== 'radio'
+            const sponsorName =
+              field.type === 'signature' ? namedSponsorLabel(recipient) : null
 
             return (
               <li
@@ -217,23 +272,36 @@ export function FieldTypePanel({
                   </div>
                   <div className="placed-field-actions">
                     {(field.type === 'radio' || field.type === 'checkbox') && (
-                      <button
-                        type="button"
-                        className="radio-option-add"
-                        aria-label={
-                          field.type === 'radio'
-                            ? 'Add radio option field'
-                            : 'Add checkbox field'
-                        }
-                        title={
-                          field.type === 'radio'
-                            ? 'Add a choice in this group. The signer can select only one.'
-                            : 'Add checkbox'
-                        }
-                        onClick={() => onAddChoiceOption(field.id)}
-                      >
-                        +
-                      </button>
+                      <span className="choice-add-actions">
+                        <span className="choice-page-tag">Page {field.page}</span>
+                        <button
+                          type="button"
+                          className="choice-add-btn"
+                          onClick={() =>
+                            onAddChoiceOption(field.id, {
+                              pageCount,
+                              placement: 'below',
+                            })
+                          }
+                        >
+                          Add below
+                        </button>
+                        {field.page < pageCount && (
+                          <button
+                            type="button"
+                            className="choice-add-btn"
+                            title={`Add another in this group on page ${field.page + 1}`}
+                            onClick={() =>
+                              onAddChoiceOption(field.id, {
+                                pageCount,
+                                placement: 'nextPage',
+                              })
+                            }
+                          >
+                            Add on page {field.page + 1}
+                          </button>
+                        )}
+                      </span>
                     )}
                     <label className="placed-field-required">
                       <input
@@ -245,6 +313,12 @@ export function FieldTypePanel({
                     </label>
                   </div>
                 </div>
+
+                {sponsorName ? (
+                  <span className="placed-field-sponsor-name" title={sponsorName}>
+                    {sponsorName}
+                  </span>
+                ) : null}
 
                 <IconButton
                   variant="ghost"
