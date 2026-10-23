@@ -281,6 +281,36 @@ export class SigningRepository {
     await pool.query(`DELETE FROM signing_sessions WHERE document_id = $1`, [documentId]);
   }
 
+  /** Investor's own signature sessions (not a sponsor countersign tied to that investor). */
+  async deleteOwnSessionsForRecipient(
+    documentId: string,
+    recipientId: string,
+  ): Promise<void> {
+    await pool.query(
+      `DELETE FROM signing_sessions
+       WHERE document_id = $1
+         AND recipient_id = $2
+         AND investor_recipient_id IS NULL`,
+      [documentId, recipientId],
+    );
+  }
+
+  /** Drop an unfinished sponsor countersign so it cannot be completed after the investor withdraws. */
+  async deleteIncompleteCountersignSessions(
+    documentId: string,
+    sellerRecipientId: string,
+    investorRecipientId: string,
+  ): Promise<void> {
+    await pool.query(
+      `DELETE FROM signing_sessions
+       WHERE document_id = $1
+         AND recipient_id = $2
+         AND investor_recipient_id = $3
+         AND completed_at IS NULL`,
+      [documentId, sellerRecipientId, investorRecipientId],
+    );
+  }
+
   async getRecipientSigningInfo(
     documentId: string,
   ): Promise<Map<string, RecipientSigningInfo>> {

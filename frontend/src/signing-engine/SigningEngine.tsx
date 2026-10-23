@@ -124,6 +124,13 @@ export function SigningEngine({
   )
 
   const extraRecipientIdSet = new Set(extraRecipientIds)
+  const filledFieldValues = useMemo(() => {
+    const merged = { ...fieldValues }
+    for (const field of document.fields) {
+      if (!(field.id in merged) && field.value) merged[field.id] = field.value
+    }
+    return merged
+  }, [document.fields, fieldValues])
   const recipientFields = document.fields.filter((field) => {
     const owner = document.recipients.find((item) => item.id === field.recipientId)
     const ownerSigned = owner?.signed === true || owner?.signingStatus === 'signed'
@@ -379,7 +386,7 @@ export function SigningEngine({
     if (
       field &&
       (field.type === 'signature' || field.type === 'initial') &&
-      !String(fieldValues[field.id] ?? '').trim()
+      !String(filledFieldValues[field.id] ?? '').trim()
     ) {
       openSignatureModal(field.id)
     }
@@ -394,7 +401,7 @@ export function SigningEngine({
   }
 
   const handleComplete = async () => {
-    if (!areRequiredFieldsComplete(recipientFields, fieldValues)) {
+    if (!areRequiredFieldsComplete(recipientFields, filledFieldValues)) {
       alert('Please complete all required fields before signing.')
       return
     }
@@ -415,8 +422,11 @@ export function SigningEngine({
     })
 
     const completedAt = new Date().toISOString()
-    let mergedFieldValues = { ...fieldValues }
+    let mergedFieldValues = { ...filledFieldValues }
     for (const field of recipientFields) {
+      if (!(field.id in mergedFieldValues) && field.value) {
+        mergedFieldValues[field.id] = field.value
+      }
       if (field.type === 'date' && !mergedFieldValues[field.id]) {
         mergedFieldValues[field.id] = formatDisplayDate(completedAt)
       }
@@ -459,7 +469,7 @@ export function SigningEngine({
     return recipient?.color || getRecipientRoleColor(recipient?.role ?? 'buyer')
   }
 
-  const canComplete = areRequiredFieldsComplete(recipientFields, fieldValues)
+  const canComplete = areRequiredFieldsComplete(recipientFields, filledFieldValues)
 
   const containerClass = `signing-engine signing-engine-${mode}`
   const isIframeMode = mode === 'iframe'

@@ -75,6 +75,12 @@ router.post(
   embedController.createSigningSession,
 );
 router.post(
+  '/documents/:id/embed/reset-investor-signature',
+  ...auth,
+  requirePermission('documents:write'),
+  embedController.resetInvestorSignature,
+);
+router.post(
   '/documents',
   ...auth,
   requirePermission('documents:write'),

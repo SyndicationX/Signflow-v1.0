@@ -195,7 +195,11 @@ function SigningPdfPage({
               <SigningFieldOverlay
                 field={field}
                 allFields={allFields}
-                value={fieldValues[field.id]}
+                value={
+                  field.id in fieldValues
+                    ? fieldValues[field.id]
+                    : (field.value ?? '')
+                }
                 signedAt={fieldSignedAt?.[field.id]}
                 isActive={field.id === activeFieldId}
                 borderColor={getRecipientColor(field.recipientId)}

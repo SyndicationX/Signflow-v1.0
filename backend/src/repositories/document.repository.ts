@@ -360,6 +360,18 @@ export class DocumentRepository {
     );
   }
 
+  async clearFieldValuesForRecipient(
+    documentId: string,
+    recipientId: string,
+  ): Promise<void> {
+    await pool.query(
+      `UPDATE document_fields
+       SET value = NULL
+       WHERE document_id = $1 AND recipient_id = $2`,
+      [documentId, recipientId],
+    );
+  }
+
   async clearSignedFileMetadata(documentId: string): Promise<void> {
     await pool.query(
       `UPDATE documents SET signed_file_hash = NULL, updated_at = NOW() WHERE id = $1`,

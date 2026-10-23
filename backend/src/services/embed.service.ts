@@ -1,11 +1,14 @@
+import { unlink } from 'fs/promises';
 import { env } from '../config/env';
 import { documentRepository } from '../repositories/document.repository';
 import { signingRepository } from '../repositories/signing.repository';
+import { getSignedPdfPath } from '../utils/document-paths';
 import type { AuthContext, ProfileType } from '../types/domain';
 import { AppError } from '../utils/app-error';
 import { generateSecureToken, hashToken } from '../utils/crypto';
 import {
   getBuyers,
+  getSeller,
   isInvestorSponsorWorkflow,
 } from '../utils/investor-sponsor-workflow';
 import {
@@ -198,5 +201,129 @@ export const embedService = {
       sessionType,
       ...(investorRecipientId ? { investorRecipientId } : {}),
     };
+  },
+
+  /**
+   * Clear one investor's signature so they can sign again.
+   * Refuses once a sponsor signature or countersign is stored.
+   */
+  async resetInvestorSignature(
+    auth: AuthContext,
+    documentId: string,
+    recipientEmail: string,
+    options?: { preserveFieldValues?: boolean },
+  ): Promise<{ ok: true }> {
+    const document = await documentRepository.findById(documentId);
+    if (!document || document.organization_id !== auth.organizationId) {
+      throw new AppError('Document not found', 404, 'NOT_FOUND');
+    }
+
+    const status = String(document.status ?? '').toLowerCase();
+    if (!['sent', 'pending', 'completed'].includes(status)) {
+      throw new AppError(
+        'This document is not open for signature changes',
+        400,
+        'VALIDATION_ERROR',
+      );
+    }
+
+    const recipients = await documentRepository.findRecipients(documentId);
+    const buyers = getBuyers(recipients);
+    const email = recipientEmail.trim().toLowerCase();
+    const emailMatch = email
+      ? buyers.find((buyer) => buyer.email.trim().toLowerCase() === email)
+      : undefined;
+
+    const signedBuyers: RecipientRow[] = [];
+    for (const buyer of buyers) {
+      const signed = await signingRepository.hasCompletedOwnSigningSession(
+        documentId,
+        buyer.id,
+      );
+      if (signed) signedBuyers.push(buyer);
+    }
+
+    const buyer =
+      (emailMatch &&
+      signedBuyers.some((signedBuyer) => signedBuyer.id === emailMatch.id)
+        ? emailMatch
+        : undefined) ??
+      (!emailMatch && signedBuyers.length === 1 ? signedBuyers[0] : undefined);
+
+    if (!buyer) {
+      if (emailMatch && !signedBuyers.some((signedBuyer) => signedBuyer.id === emailMatch.id)) {
+        throw new AppError(
+          'You have not completed this signature yet',
+          400,
+          'NOT_SIGNED',
+        );
+      }
+      throw new AppError(
+        'Investor signature was not found on this document',
+        404,
+        'NOT_FOUND',
+      );
+    }
+
+    const seller = isInvestorSponsorWorkflow(recipients)
+      ? getSeller(recipients)
+      : undefined;
+    if (!seller) {
+      throw new AppError(
+        'This signature is final. There is no sponsor signature still pending.',
+        409,
+        'SPONSOR_ALREADY_SIGNED',
+      );
+    }
+
+    const sponsorOwnSigned = await signingRepository.hasCompletedOwnSigningSession(
+      documentId,
+      seller.id,
+    );
+    if (sponsorOwnSigned) {
+      throw new AppError(
+        'The sponsor has already signed this document',
+        409,
+        'SPONSOR_ALREADY_SIGNED',
+      );
+    }
+
+    const sponsorCountersigned =
+      await signingRepository.hasCompletedSponsorSessionForInvestor(
+        documentId,
+        seller.id,
+        buyer.id,
+      );
+    if (sponsorCountersigned) {
+      throw new AppError(
+        'The sponsor has already signed this document',
+        409,
+        'SPONSOR_ALREADY_SIGNED',
+      );
+    }
+
+    await signingRepository.deleteOwnSessionsForRecipient(documentId, buyer.id);
+    await signingRepository.deleteIncompleteCountersignSessions(
+      documentId,
+      seller.id,
+      buyer.id,
+    );
+    if (!options?.preserveFieldValues) {
+      await documentRepository.clearFieldValuesForRecipient(documentId, buyer.id);
+    }
+
+    if (status === 'completed') {
+      await documentRepository.update(documentId, { status: 'pending' });
+    }
+
+    try {
+      await unlink(getSignedPdfPath(documentId));
+    } catch {
+      // combined PDF may not exist until every party has signed
+    }
+
+    await documentRepository.clearSignedFileMetadata(documentId);
+
+    return { ok: true };
   },
 };

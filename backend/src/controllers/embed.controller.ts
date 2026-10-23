@@ -23,6 +23,20 @@ export class EmbedController {
     );
     res.status(201).json(result);
   };
+
+  resetInvestorSignature = async (req: RequestWithAuth, res: Response): Promise<void> => {
+    const body = req.body as {
+      recipientEmail?: string;
+      preserveFieldValues?: boolean;
+    };
+    const result = await embedService.resetInvestorSignature(
+      req.auth!,
+      paramAsString(req.params.id),
+      String(body.recipientEmail ?? ''),
+      { preserveFieldValues: body.preserveFieldValues === true },
+    );
+    res.status(200).json(result);
+  };
 }
 
 export const embedController = new EmbedController();
