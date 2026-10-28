@@ -63,9 +63,9 @@ const SIGNATURE_TEXT_MIN_FONT_SIZE = 11;
 const SIGNATURE_TEXT_MAX_FONT_SIZE = 24;
 /** Typed signature text scale — timestamp uses TIMESTAMP_FONT_SIZE above. */
 const SIGNATURE_TEXT_HEIGHT_RATIO = 0.72;
-const FIELD_TEXT_MIN_FONT_SIZE = 10;
-const FIELD_TEXT_MAX_FONT_SIZE = 24;
-const FIELD_TEXT_HEIGHT_RATIO = 0.72;
+const FIELD_TEXT_MIN_FONT_SIZE = 9;
+const FIELD_TEXT_MAX_FONT_SIZE = 11;
+const FIELD_TEXT_HEIGHT_RATIO = 0.5;
 const FIELD_PAD_X = 3;
 
 function getSigningTimestampLayout(

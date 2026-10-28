@@ -462,7 +462,7 @@ body.signing-portal {
   border-radius: var(--radius);
   background: rgba(37, 99, 235, 0.08);
   container-type: size;
-  font-size: clamp(0.7rem, 24cqmin, 0.95rem);
+  font-size: clamp(0.6875rem, 18cqmin, 0.8125rem);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -537,7 +537,7 @@ body.signing-portal {
 }
 
 .signing-field--readonly .signing-field-text {
-  font-size: clamp(0.75rem, 28cqmin, 1rem);
+  font-size: clamp(0.6875rem, 18cqmin, 0.8125rem);
   color: #334155;
   padding: 2px 4px;
   overflow: hidden;
@@ -603,7 +603,7 @@ body.signing-portal {
   border: none;
   background: transparent;
   font: inherit;
-  font-size: clamp(0.7rem, 24cqmin, 0.95rem);
+  font-size: clamp(0.6875rem, 18cqmin, 0.8125rem);
   color: #1e293b;
   padding: 0.15rem 0.25rem;
   outline: none;
