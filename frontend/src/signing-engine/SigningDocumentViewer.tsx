@@ -16,6 +16,8 @@ interface SigningDocumentViewerProps {
   fieldValues: Record<string, string>
   fieldSignedAt?: Record<string, string>
   activeFieldId?: string
+  /** When set, every id in the set is highlighted. Used for a whole radio group. */
+  activeFieldIds?: Set<string>
   readOnlyFieldIds?: Set<string>
   getRecipientColor: (recipientId: string) => string
   onFieldActivate: (fieldId: string) => void
@@ -48,6 +50,7 @@ interface SigningPdfPageProps {
   fieldValues: Record<string, string>
   fieldSignedAt?: Record<string, string>
   activeFieldId?: string
+  activeFieldIds?: Set<string>
   readOnlyFieldIds?: Set<string>
   getRecipientColor: (recipientId: string) => string
   onFieldActivate: (fieldId: string) => void
@@ -69,6 +72,7 @@ function SigningPdfPage({
   fieldValues,
   fieldSignedAt,
   activeFieldId,
+  activeFieldIds,
   readOnlyFieldIds,
   getRecipientColor,
   onFieldActivate,
@@ -190,26 +194,41 @@ function SigningPdfPage({
         ) : null}
 
         {!showFileError &&
-          pageFields.map((field) => (
-            <div key={field.id} className="signing-field-slot" data-signing-field={field.id}>
-              <SigningFieldOverlay
-                field={field}
-                allFields={allFields}
-                value={
-                  field.id in fieldValues
-                    ? fieldValues[field.id]
-                    : (field.value ?? '')
-                }
-                signedAt={fieldSignedAt?.[field.id]}
-                isActive={field.id === activeFieldId}
-                borderColor={getRecipientColor(field.recipientId)}
-                readOnly={readOnlyFieldIds?.has(field.id)}
-                onActivate={() => onFieldActivate(field.id)}
-                onValueChange={(value) => onFieldValueChange(field.id, value)}
-                onSignatureRequest={() => onSignatureRequest(field.id)}
-              />
-            </div>
-          ))}
+          pageFields.map((field) => {
+            const value =
+              field.id in fieldValues ? fieldValues[field.id] : (field.value ?? '')
+            const readOnly = Boolean(readOnlyFieldIds?.has(field.id))
+            const isActive = activeFieldIds
+              ? activeFieldIds.has(field.id)
+              : field.id === activeFieldId
+            return (
+              <div
+                key={field.id}
+                className={`signing-field-slot${isActive ? ' signing-field-slot--active' : ''}`}
+                data-signing-field={field.id}
+                style={{
+                  left: `${field.x}%`,
+                  top: `${field.y}%`,
+                  width: `${field.width}%`,
+                  height: `${field.height}%`,
+                }}
+              >
+                <SigningFieldOverlay
+                  field={field}
+                  allFields={allFields}
+                  fieldValues={fieldValues}
+                  value={value}
+                  signedAt={fieldSignedAt?.[field.id]}
+                  isActive={isActive}
+                  borderColor={getRecipientColor(field.recipientId)}
+                  readOnly={readOnly}
+                  onActivate={() => onFieldActivate(field.id)}
+                  onValueChange={(next) => onFieldValueChange(field.id, next)}
+                  onSignatureRequest={() => onSignatureRequest(field.id)}
+                />
+              </div>
+            )
+          })}
       </div>
     </div>
   )
@@ -225,6 +244,7 @@ export function SigningDocumentViewer({
   fieldValues,
   fieldSignedAt,
   activeFieldId,
+  activeFieldIds,
   readOnlyFieldIds,
   getRecipientColor,
   onFieldActivate,
@@ -495,6 +515,7 @@ export function SigningDocumentViewer({
     fieldValues,
     fieldSignedAt,
     activeFieldId,
+    activeFieldIds,
     readOnlyFieldIds,
     getRecipientColor,
     onFieldActivate,

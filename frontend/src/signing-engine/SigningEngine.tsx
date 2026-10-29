@@ -22,7 +22,9 @@ import {
 } from '../utils/replicateSigningFieldValues'
 import { getRecipientRoleColor } from '../constants/fieldTypes'
 import {
+  activeFieldIdsForNavigation,
   navigationFieldsForSigner,
+  navigationIndexForField,
   nextFieldIndex,
   previousRequiredIndex,
 } from '../utils/signingFieldNavigation'
@@ -322,7 +324,7 @@ export function SigningEngine({
   }, [applyBranding])
 
   const handleFieldActivate = (fieldId: string) => {
-    const navigationIndex = navigationFields.findIndex((field) => field.id === fieldId)
+    const navigationIndex = navigationIndexForField(navigationFields, recipientFields, fieldId)
     if (navigationIndex >= 0) {
       setCurrentFieldIndex(navigationIndex)
     }
@@ -516,6 +518,10 @@ export function SigningEngine({
       fieldValues={fieldValues}
       fieldSignedAt={fieldSignedAt}
       activeFieldId={navigationFields[currentFieldIndex]?.id}
+      activeFieldIds={activeFieldIdsForNavigation(
+        navigationFields[currentFieldIndex],
+        recipientFields,
+      )}
       readOnlyFieldIds={readOnlyFieldIds}
       getRecipientColor={getRecipientColor}
       onFieldActivate={handleFieldActivate}

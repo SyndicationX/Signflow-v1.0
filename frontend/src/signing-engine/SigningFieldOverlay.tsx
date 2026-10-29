@@ -2,12 +2,13 @@ import type { DocumentField, FieldType } from '../types'
 import { formatDisplayDateTime } from '../utils/date'
 import { sanitizeNumberInput } from '../utils/numberField'
 import { formatFieldDisplayValue, getSignatureImageSrc } from '../utils/pdf'
-import { getRadioGroupId } from '../utils/radioField'
+import { getRadioGroupFields, getRadioGroupId, isRadioGroupFilled } from '../utils/radioField'
 
 interface SigningFieldOverlayProps {
   field: DocumentField
   allFields?: DocumentField[]
   value?: string
+  fieldValues?: Record<string, string>
   signedAt?: string
   isActive: boolean
   borderColor: string
@@ -30,6 +31,48 @@ function getInputType(type: FieldType): string {
 
 function isSignatureField(type: FieldType): boolean {
   return type === 'signature' || type === 'initial'
+}
+
+/** Red star on fields this signer still has to complete. One star per radio group. */
+export function showsRequiredStar(
+  field: DocumentField,
+  allFields: DocumentField[] | undefined,
+  value: string | undefined,
+  fieldValues: Record<string, string> | undefined,
+  readOnly: boolean,
+): boolean {
+  if (readOnly) return false
+
+  if (field.type === 'radio') {
+    const fields = allFields ?? [field]
+    const groupId = getRadioGroupId(field, fields)
+    const group = groupId ? getRadioGroupFields(fields, groupId) : [field]
+    if (!group.some((item) => item.required)) return false
+    const values = fieldValues ?? { [field.id]: value ?? '' }
+    if (groupId && isRadioGroupFilled(fields, values, groupId)) return false
+    const anchor = [...group].sort((a, b) => a.y - b.y || a.x - b.x)[0]
+    return anchor?.id === field.id
+  }
+
+  if (!field.required) return false
+  return !String(value ?? '').trim()
+}
+
+function RequiredMark({ choice = false }: { choice?: boolean }) {
+  return (
+    <span className={choice ? 'signing-field-req signing-field-req--choice' : 'signing-field-req'} aria-hidden>
+      *
+    </span>
+  )
+}
+
+function EmptyFieldHint({ label, required }: { label: string; required: boolean }) {
+  return (
+    <span className="signing-field-hint">
+      <span className="signing-field-hint-text">{label}</span>
+      {required ? <RequiredMark /> : null}
+    </span>
+  )
 }
 
 function SignatureTimestamp({ signedAt }: { signedAt: string }) {
@@ -67,6 +110,7 @@ export function SigningFieldOverlay({
   field,
   allFields,
   value,
+  fieldValues,
   signedAt,
   isActive,
   borderColor,
@@ -77,6 +121,8 @@ export function SigningFieldOverlay({
 }: SigningFieldOverlayProps) {
   const isFilled = Boolean(value)
   const imageSrc = value ? getSignatureImageSrc(value) : null
+  const showRequiredStar = showsRequiredStar(field, allFields, value, fieldValues, readOnly)
+  const accessibleLabel = field.required ? `${field.label}, required` : field.label
 
   const handleSignatureClick = () => {
     if (readOnly) return
@@ -91,10 +137,6 @@ export function SigningFieldOverlay({
         <div
           className="signing-field signing-field--readonly signing-field--signature filled"
           style={{
-            left: `${field.x}%`,
-            top: `${field.y}%`,
-            width: `${field.width}%`,
-            height: `${field.height}%`,
             borderColor,
           }}
           aria-label={completedLabel}
@@ -115,10 +157,6 @@ export function SigningFieldOverlay({
         <div
           className={`signing-field signing-field--readonly signing-field--checkbox ${isFilled ? 'filled' : ''}`}
           style={{
-            left: `${field.x}%`,
-            top: `${field.y}%`,
-            width: `${field.width}%`,
-            height: `${field.height}%`,
             borderColor,
           }}
           aria-label={completedLabel}
@@ -136,10 +174,6 @@ export function SigningFieldOverlay({
         <div
           className={`signing-field signing-field--readonly signing-field--radio ${isSelected ? 'filled' : ''}`}
           style={{
-            left: `${field.x}%`,
-            top: `${field.y}%`,
-            width: `${field.width}%`,
-            height: `${field.height}%`,
             borderColor,
           }}
           aria-label={completedLabel}
@@ -156,10 +190,6 @@ export function SigningFieldOverlay({
       <div
         className={`signing-field signing-field--readonly ${isFilled ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor,
         }}
         aria-label={completedLabel}
@@ -178,13 +208,11 @@ export function SigningFieldOverlay({
         type="button"
         className={`signing-field signing-field--signature ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor,
         }}
         onClick={handleSignatureClick}
+        aria-label={accessibleLabel}
+        aria-required={field.required || undefined}
       >
         {isFilled ? (
           <SignatureFieldContent
@@ -194,7 +222,10 @@ export function SigningFieldOverlay({
             imageSrc={imageSrc}
           />
         ) : (
-          <span className="signing-field-text">{field.label}</span>
+          <span className="signing-field-text">
+            {field.label}
+            {showRequiredStar ? <RequiredMark /> : null}
+          </span>
         )}
       </button>
     )
@@ -202,13 +233,10 @@ export function SigningFieldOverlay({
 
   if (field.type === 'checkbox') {
     return (
+      <>
       <div
         className={`signing-field signing-field--checkbox ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor: '#3b6cf5',
         }}
         onMouseDown={(event) => event.preventDefault()}
@@ -224,10 +252,13 @@ export function SigningFieldOverlay({
             checked={value === 'true'}
             onChange={(event) => onValueChange(event.target.checked ? 'true' : '')}
             onFocus={onActivate}
-            aria-label={field.label}
+            aria-label={accessibleLabel}
+            aria-required={field.required || undefined}
           />
         </label>
       </div>
+      {showRequiredStar ? <RequiredMark choice /> : null}
+      </>
     )
   }
 
@@ -243,13 +274,10 @@ export function SigningFieldOverlay({
     }
 
     return (
+      <>
       <div
         className={`signing-field signing-field--radio ${isActive ? 'active' : ''} ${isSelected ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor: '#3b6cf5',
         }}
         onClick={selectOption}
@@ -262,7 +290,8 @@ export function SigningFieldOverlay({
             readOnly
             onChange={selectOption}
             onClick={(event) => event.preventDefault()}
-            aria-label={field.label}
+            aria-label={accessibleLabel}
+            aria-required={field.required || undefined}
           />
           <span
             className={`signing-radio-dot${isSelected ? ' signing-radio-dot--on' : ''}`}
@@ -270,6 +299,8 @@ export function SigningFieldOverlay({
           />
         </label>
       </div>
+      {showRequiredStar ? <RequiredMark choice /> : null}
+      </>
     )
   }
 
@@ -280,22 +311,19 @@ export function SigningFieldOverlay({
       <div
         className={`signing-field signing-field--input signing-field--date ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor,
         }}
         onClick={onActivate}
       >
+        {!isFilled ? <EmptyFieldHint label={field.label} required={showRequiredStar} /> : null}
         <input
           type="text"
           className="signing-field-input"
           value={inputValue}
-          placeholder={field.label}
           onChange={(event) => onValueChange(event.target.value)}
           onFocus={onActivate}
-          aria-label={field.label}
+          aria-label={accessibleLabel}
+          aria-required={field.required || undefined}
         />
       </div>
     )
@@ -306,23 +334,20 @@ export function SigningFieldOverlay({
       <div
         className={`signing-field signing-field--input signing-field--number ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
         style={{
-          left: `${field.x}%`,
-          top: `${field.y}%`,
-          width: `${field.width}%`,
-          height: `${field.height}%`,
           borderColor,
         }}
         onClick={onActivate}
       >
+        {!isFilled ? <EmptyFieldHint label={field.label} required={showRequiredStar} /> : null}
         <input
           type="text"
           inputMode="decimal"
           className="signing-field-input"
           value={inputValue}
-          placeholder={field.label}
           onChange={(event) => onValueChange(sanitizeNumberInput(event.target.value))}
           onFocus={onActivate}
-          aria-label={field.label}
+          aria-label={accessibleLabel}
+          aria-required={field.required || undefined}
         />
       </div>
     )
@@ -332,22 +357,19 @@ export function SigningFieldOverlay({
     <div
       className={`signing-field signing-field--input ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
       style={{
-        left: `${field.x}%`,
-        top: `${field.y}%`,
-        width: `${field.width}%`,
-        height: `${field.height}%`,
         borderColor,
       }}
       onClick={onActivate}
     >
+      {!isFilled ? <EmptyFieldHint label={field.label} required={showRequiredStar} /> : null}
       <input
         type={getInputType(field.type)}
         className="signing-field-input"
         value={inputValue}
-        placeholder={field.label}
         onChange={(event) => onValueChange(event.target.value)}
         onFocus={onActivate}
-        aria-label={field.label}
+        aria-label={accessibleLabel}
+        aria-required={field.required || undefined}
       />
     </div>
   )

@@ -116,7 +116,22 @@
 }
 
 .signing-field-slot {
-  display: contents;
+  position: absolute;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.signing-field-slot--active {
+  z-index: 6;
+}
+
+.signing-field-slot > .signing-field {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
 }
 
 .signing-embed-body {
@@ -225,7 +240,9 @@ body.signing-portal {
 
 .current-field-info {
   padding: 1rem;
-  background: var(--color-bg);
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  border-left: 3px solid #dc2626;
   border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
@@ -273,7 +290,7 @@ body.signing-portal {
 }
 
 .field-checklist li.current {
-  color: var(--color-primary);
+  color: #dc2626;
   font-weight: 500;
 }
 
@@ -470,6 +487,53 @@ body.signing-portal {
   padding: 0.15rem 0.25rem;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.signing-field-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.12rem;
+  padding: 0 0.28rem;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.signing-field-hint-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signing-field-req {
+  flex: 0 0 auto;
+  color: #b91c1c;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.signing-field--signature .signing-field-req {
+  margin-left: 0.12rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.signing-field-req--choice {
+  position: absolute;
+  top: -0.2rem;
+  right: -0.05rem;
+  z-index: 3;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .signing-field--signature {
@@ -718,7 +782,10 @@ body.signing-portal {
 
 .signing-field.active {
   border-style: solid;
-  box-shadow: 0 0 0 3px var(--color-primary-light);
+  border-color: #dc2626 !important;
+  background: rgba(220, 38, 38, 0.12);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+  color: #b91c1c;
 }
 
 .signing-field.filled {
@@ -737,9 +804,15 @@ body.signing-portal {
   color: var(--color-primary, #3b6cf5);
 }
 
+.signing-field--checkbox.active,
+.signing-field--radio.active {
+  color: #dc2626;
+}
+
 .signing-field--checkbox.active .signing-field-checkbox,
 .signing-field--radio.active .signing-field-radio-option {
-  box-shadow: 0 0 0 3px var(--color-primary-light, rgba(59, 108, 245, 0.35));
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
 }
 
 .signature-tabs {

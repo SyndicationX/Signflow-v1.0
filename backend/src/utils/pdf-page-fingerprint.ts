@@ -1,17 +1,56 @@
-import { createHash } from 'crypto';
-import { PDFDocument } from 'pdf-lib';
+import { createHash, type Hash } from 'crypto';
+import { PDFArray, PDFDocument, PDFNumber, PDFObject, PDFRawStream, PDFRef } from 'pdf-lib';
 
-/** Stable fingerprint for a single PDF page (content-based). */
+function hashPdfObject(hash: Hash, value: PDFObject | undefined): void {
+  if (!value) return;
+  if (value instanceof PDFArray) {
+    hash.update('[');
+    for (let i = 0; i < value.size(); i += 1) {
+      hashPdfObject(hash, value.get(i));
+    }
+    hash.update(']');
+    return;
+  }
+  if (value instanceof PDFNumber) {
+    hash.update(String(value.asNumber()));
+    return;
+  }
+  if (
+    value instanceof PDFRawStream ||
+    typeof (value as { getContents?: () => Uint8Array }).getContents === 'function'
+  ) {
+    const bytes = (value as { getContents: () => Uint8Array }).getContents();
+    hash.update(bytes);
+  }
+}
+
+/**
+ * Stable fingerprint for a single PDF page.
+ * Hashes the page content stream, not a re-saved PDF. pdf-lib stamps ModDate
+ * on every save, so a wrapper-file hash changes every second and field
+ * placement falls back to page numbers.
+ */
 export async function computePdfPageFingerprints(buffer: Buffer): Promise<string[]> {
   const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
   const hashes: string[] = [];
 
-  for (const idx of doc.getPageIndices()) {
-    const single = await PDFDocument.create();
-    const [page] = await single.copyPages(doc, [idx]);
-    single.addPage(page);
-    const bytes = await single.save();
-    hashes.push(createHash('sha256').update(bytes).digest('hex').slice(0, 16));
+  for (const page of doc.getPages()) {
+    const hash = createHash('sha256');
+    const { width, height } = page.getSize();
+    hash.update(`${width}x${height}@${page.getRotation().angle}`);
+    const contents = page.node.Contents();
+    if (contents instanceof PDFArray) {
+      for (let i = 0; i < contents.size(); i += 1) {
+        const item = contents.get(i);
+        const stream = item instanceof PDFRef ? doc.context.lookup(item) : item;
+        hashPdfObject(hash, stream);
+      }
+    } else if (contents instanceof PDFRef) {
+      hashPdfObject(hash, doc.context.lookup(contents));
+    } else {
+      hashPdfObject(hash, contents);
+    }
+    hashes.push(hash.digest('hex').slice(0, 16));
   }
 
   return hashes;
