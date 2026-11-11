@@ -114,19 +114,35 @@ export function collapseRadioGroupsForValidation(fields: DocumentField[]): Docum
   return result
 }
 
+function isRequiredFieldComplete(
+  field: DocumentField,
+  fields: DocumentField[],
+  fieldValues: Record<string, string>,
+): boolean {
+  if (field.type === 'radio') {
+    const groupId = getRadioGroupId(field, fields)
+    return groupId
+      ? isRadioGroupFilled(fields, fieldValues, groupId)
+      : isRadioSelected(fieldValues, field.id)
+  }
+  return Boolean(String(fieldValues[field.id] ?? '').trim())
+}
+
 export function areRequiredFieldsComplete(
   fields: DocumentField[],
   fieldValues: Record<string, string>,
 ): boolean {
   const required = collapseRadioGroupsForValidation(fields.filter((field) => field.required))
+  return required.every((field) => isRequiredFieldComplete(field, fields, fieldValues))
+}
 
-  return required.every((field) => {
-    if (field.type === 'radio') {
-      const groupId = getRadioGroupId(field, fields)
-      return groupId ? isRadioGroupFilled(fields, fieldValues, groupId) : isRadioSelected(fieldValues, field.id)
-    }
-    return Boolean(fieldValues[field.id])
-  })
+/** Required fields that still block Finish. A radio group counts as one field. */
+export function incompleteRequiredFields(
+  fields: DocumentField[],
+  fieldValues: Record<string, string>,
+): DocumentField[] {
+  const required = collapseRadioGroupsForValidation(fields.filter((field) => field.required))
+  return required.filter((field) => !isRequiredFieldComplete(field, fields, fieldValues))
 }
 
 export function getNextRadioOptionLabel(fields: DocumentField[], groupId: string): string {

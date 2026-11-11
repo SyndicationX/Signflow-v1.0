@@ -10,6 +10,7 @@ import {
   areRequiredFieldsComplete,
   buildRadioGroupSelectionUpdates,
   getRadioGroupId,
+  incompleteRequiredFields,
   restoreSavedRadioValues,
 } from '../utils/radioField'
 import { formatDisplayDate } from '../utils/date'
@@ -88,29 +89,6 @@ export function SigningEngine({
     ? document.recipients.find((item) => item.id === investorRecipientId)
     : undefined
 
-  const investorFields =
-    recipient?.role === 'seller' && investorRecipient
-      ? document.fields.filter((field) => {
-          if (field.recipientId !== investorRecipientId) return false
-          if (investorRecipient.profileType) {
-            return fieldAppliesToProfile(field, investorRecipient.profileType)
-          }
-          return true
-        })
-      : []
-
-  const previouslySignedFields = document.fields.filter((field) => {
-    if (field.recipientId === recipientId) return false
-    const owner = document.recipients.find((item) => item.id === field.recipientId)
-    if (!owner || (owner.signingStatus !== 'signed' && owner.signed !== true)) {
-      return false
-    }
-    if (owner.role === 'buyer' && owner.profileType) {
-      return fieldAppliesToProfile(field, owner.profileType)
-    }
-    return true
-  })
-
   const sharedSponsorRecipientIds = new Set(
     recipient?.role === 'seller'
       ? document.recipients
@@ -153,11 +131,6 @@ export function SigningEngine({
     return true
   })
 
-  const viewerFields = [...previouslySignedFields, ...investorFields, ...recipientFields]
-  const readOnlyFieldIds = new Set([
-    ...previouslySignedFields.map((field) => field.id),
-    ...investorFields.map((field) => field.id),
-  ])
   const navigationFields = navigationFieldsForSigner(recipient?.role, recipientFields)
   const progress = getProgress(recipientFields)
   const [fieldNavigationRequest, setFieldNavigationRequest] = useState(0)
@@ -472,6 +445,11 @@ export function SigningEngine({
   }
 
   const canComplete = areRequiredFieldsComplete(recipientFields, filledFieldValues)
+  const finishBlockedTitle = canComplete
+    ? undefined
+    : `Still required: ${incompleteRequiredFields(recipientFields, filledFieldValues)
+        .map((field) => field.label || field.type)
+        .join(', ')}`
 
   const containerClass = `signing-engine signing-engine-${mode}`
   const isIframeMode = mode === 'iframe'
@@ -514,7 +492,7 @@ export function SigningEngine({
       signingToken={token}
       title={document.title}
       pages={document.pages}
-      fields={viewerFields}
+      fields={recipientFields}
       fieldValues={fieldValues}
       fieldSignedAt={fieldSignedAt}
       activeFieldId={navigationFields[currentFieldIndex]?.id}
@@ -522,7 +500,6 @@ export function SigningEngine({
         navigationFields[currentFieldIndex],
         recipientFields,
       )}
-      readOnlyFieldIds={readOnlyFieldIds}
       getRecipientColor={getRecipientColor}
       onFieldActivate={handleFieldActivate}
       onFieldValueChange={handleFieldValueChange}
@@ -585,6 +562,7 @@ export function SigningEngine({
                 type="button"
                 onClick={handleComplete}
                 disabled={!canComplete}
+                title={finishBlockedTitle}
                 className="signing-embed-finish-btn"
               >
                 Finish signing

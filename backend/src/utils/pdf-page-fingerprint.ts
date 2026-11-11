@@ -1,5 +1,5 @@
 import { createHash, type Hash } from 'crypto';
-import { PDFArray, PDFDocument, PDFNumber, PDFObject, PDFRawStream, PDFRef } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFNumber, PDFObject, PDFRef, PDFStream } from 'pdf-lib';
 
 function hashPdfObject(hash: Hash, value: PDFObject | undefined): void {
   if (!value) return;
@@ -15,12 +15,8 @@ function hashPdfObject(hash: Hash, value: PDFObject | undefined): void {
     hash.update(String(value.asNumber()));
     return;
   }
-  if (
-    value instanceof PDFRawStream ||
-    typeof (value as { getContents?: () => Uint8Array }).getContents === 'function'
-  ) {
-    const bytes = (value as { getContents: () => Uint8Array }).getContents();
-    hash.update(bytes);
+  if (value instanceof PDFStream) {
+    hash.update(value.getContents());
   }
 }
 

@@ -1,6 +1,10 @@
 import { ChevronLeft, ChevronRight, CircleCheck, XCircle } from 'lucide-react'
 import { Button } from '../components/ui/Button'
-import { collapseRadioGroupsForValidation, areRequiredFieldsComplete } from '../utils/radioField'
+import {
+  areRequiredFieldsComplete,
+  collapseRadioGroupsForValidation,
+  incompleteRequiredFields,
+} from '../utils/radioField'
 import { isSignerFieldComplete } from '../utils/signingFieldNavigation'
 import type { DocumentField } from '../types'
 
@@ -32,6 +36,11 @@ export function SigningSidebar({
   const fieldsToVisit = navigationFields ?? requiredFields
   const currentField = fieldsToVisit[currentFieldIndex]
   const canComplete = areRequiredFieldsComplete(fields, fieldValues)
+  const finishBlockedTitle = canComplete
+    ? undefined
+    : `Still required: ${incompleteRequiredFields(fields, fieldValues)
+        .map((field) => field.label || field.type)
+        .join(', ')}`
   const canGoNext = currentFieldIndex < fieldsToVisit.length - 1
 
   return (
@@ -79,7 +88,7 @@ export function SigningSidebar({
           icon={CircleCheck}
           onClick={onComplete}
           disabled={!canComplete}
-          title={canComplete ? undefined : 'Complete all required fields to enable signing'}
+          title={finishBlockedTitle}
         >
           Complete Signing
         </Button>
